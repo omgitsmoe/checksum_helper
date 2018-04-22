@@ -78,6 +78,8 @@ def build_hashfile_str(*filename_hash_pairs):
 # TODO pass hash files directly using cl args
 HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
 DIR_SUBSTR_EXCLUDE = (".git")
+
+
 def discover_hash_files(start_path, depth=3, exclude_str_filename=None):
     if exclude_str_filename is None:
         exclude_str_filename = ()
@@ -86,7 +88,9 @@ def discover_hash_files(start_path, depth=3, exclude_str_filename=None):
     for dirpath, dirnames, fnames in os.walk(start_path):
         if current_depth == depth:
             break
-        # When topdown is true, the caller can modify the dirnames list in-place (e.g., via del or slice assignment), and walk will only recurse into the subdirectories whose names remain in dirnames; this can be used to prune the search...
+        # When topdown is true, the caller can modify the dirnames list in-place (e.g., via del
+        # or slice assignment), and walk will only recurse into the subdirectories whose names
+        # remain in dirnames; this can be used to prune the search...
         dirnames[:] = [d for d in dirnames if not any(ss in d for ss in DIR_SUBSTR_EXCLUDE)]
 
         for fname in fnames:
@@ -103,6 +107,7 @@ def discover_hash_files(start_path, depth=3, exclude_str_filename=None):
 class ChecksumHelper:
     def __init__(self, root_dir, hash_filename_filter=None):
         self.root_dir = os.path.normpath(root_dir)
+        self.root_dir_abs = os.path.abspath(self.root_dir)
         # set working dir to root_dir
         os.chdir(root_dir)
         self.root_dir_name = os.path.basename(os.path.abspath(self.root_dir))
@@ -111,12 +116,26 @@ class ChecksumHelper:
         # files that were found using discover_hash_files
         # -> also contains hashes for files that couldve been deleted
         self.hash_file_most_current = None
+
         # susbtrings that cant be in filename of hash file
-        self.hash_filename_filter = hash_filename_filter
+        if hash_filename_filter is None:
+            self.hash_filename_filter = ()
+        elif isinstance(hash_filename_filter, str):
+            # ("md5") is NOT a tuple its a string ("md5",) IS a tuple (mind the comma!)
+            self.hash_filename_filter = (hash_filename_filter,)
+        else:
+            self.hash_filename_filter = hash_filename_filter
+
+        # NEVER include "" in hashname filter since: "" in "some_string" is always True
+        # (use self.hash_filename_filter here since we might have converted it to a tuple)
+        if "" in self.hash_filename_filter:
+            logger.warning("Empty string ("") was included in hash_filename_filter "
+                           "this means that all hash files will be filtered out!!")
+
         self.options = {"include_unchanged_files_incremental": False}
 
     def discover_hash_files(self):
-        hash_files = discover_hash_files(self.root_dir, exclude_str_filename=self.hash_filename_filter)
+        hash_files = discover_hash_files(".", exclude_str_filename=self.hash_filename_filter)
         self.all_hash_files = [HashFile(self, hfile_path) for hfile_path in hash_files]
 
     def read_all_hash_files(self):
@@ -142,7 +161,7 @@ class ChecksumHelper:
                                                    f"{time.strftime('%Y-%m-%d')}.{used_algos[0]}")
         else:
             single_algo = False
-            self.hash_file_most_current = MixedAlgoHashCollection()
+            self.hash_file_most_current = MixedAlgoHashCollection(self)
 
         # update dict with dicts from hash files -> sorted
         # dicts with biggest mtime last(newest) -> most current
@@ -154,12 +173,15 @@ class ChecksumHelper:
                 # to get a correct path
                 # BUT
                 combined_path = os.path.normpath(os.path.join(hash_file.hash_file_dir, file_path))
-                # Return a relative filepath to path either from the current directory or from an
-                # optional start directory
+                # relpath: Return a relative filepath to path either from the current directory or
+                # from an optional start directory
                 # NOTE(moe): we could either set the cwd to root dir and access everything with
-                # this path thats generated here or we could ignore the cwd and alway
+                # this path thats generated here or we could ignore the cwd and always
                 # do a join of root_dir and this path
-                combined_path = os.path.relpath(combined_path, start=self.root_dir)
+                # doing first -> dont use start=self.root_dir
+                combined_path = os.path.relpath(combined_path)
+                # NOTE(moe): here we could also check if file_path was an abspath with
+                # os.path.isabs then we could just use the abs path
                 if single_algo:
                     self.hash_file_most_current.set_hash_for_file(combined_path, hash_str)
                 else:
@@ -173,19 +195,21 @@ class ChecksumHelper:
         if not self.hash_file_most_current:
             self.build_most_current()
 
-        incremental = HashFile(self, os.path.join(self.root_dir,
-            f"{self.root_dir_name}_{time.strftime('%Y-%m-%d')}.{algo_name}"))
+        incremental = HashFile(self, f"{self.root_dir_name}_{time.strftime('%Y-%m-%d')}"
+                                     f".{algo_name}")
 
-        filename_hash_dict = {}
-
-        for dirpath, dirnames, fnames in os.walk(self.root_dir):
+        for dirpath, dirnames, fnames in os.walk("."):
             for fname in fnames:
                 file_path = os.path.join(dirpath, fname)
                 new_hash, include = self._build_verfiy_hash(file_path, algo_name)
                 if include:
-                    filename_hash_dict[file_path] = new_hash
+                    # NOTE(moe): generating the dict here would be faster instead of using
+                    # the set_hash_for_file method but the performance difference is prob
+                    # marginal -> premature optimization (for later: remember to normalize
+                    # file_path)
+                    # filename_hash_dict[os.path.normpath(file_path)] = new_hash
+                    incremental.set_hash_for_file(file_path, new_hash)
 
-        incremental.filename_hash_dict = filename_hash_dict
         incremental.write()
 
     def _build_verfiy_hash(self, file_path, algo_name):
@@ -236,24 +260,34 @@ class HashFile:
         # self.hash_filename_dict = {}
         self.filename_hash_dict = {}
         self.mtime = None
-        # path to dir of hash file NOT relpath from self.handling_checksumhelper.root_dir
+        # path to dir of hash file -> relpath from self.handling_checksumhelper.root_dir
+        # since we set cwd to self.handling_checksumhelper.root_dir
         self.hash_type = self.filename.rsplit(".", 1)[-1]
 
     def get_hash_by_file_path(self, file_path):
         """
-        Pass in file_path (normalized using normpath) to get stored hash for
+        Pass in file_path (normalized here using normpath) to get stored hash for
         that path
         KeyError -> None
 
-        :param file_path: normpath() normalized file_path
+        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
         :return: Tuple of hash in hex and name of used hash algorithm
         """
+        # filename_hash_dict uses normalized paths as keys
+        file_path = os.path.normpath(file_path)
         try:
             return self.filename_hash_dict[file_path], self.hash_type
         except KeyError:
             return None, None
 
     def set_hash_for_file(self, file_path, hash_str):
+        """
+        Sets hash value in HashFile for specified file_path
+
+        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
+                          gets normalized here
+        :param hash_str:  Hex-string representation of file hash
+        """
         self.filename_hash_dict[os.path.normpath(file_path)] = hash_str
 
     def get_path(self):
@@ -285,7 +319,7 @@ class HashFile:
                 w.write(hashfile_str)
 
     def update_from_dict(self, update_dict):
-        # TODO check if dict matches setup of filename_hash_dict
+        # TODO(moe): check if dict matches setup of filename_hash_dict
         self.filename_hash_dict.update(update_dict)
 
     def filter_deleted_files(self):
@@ -295,27 +329,32 @@ class HashFile:
 
 
 class MixedAlgoHashCollection:
-    def __init__(self):
+    def __init__(self, handling_checksumhelper):
+        self.handling_checksumhelper = handling_checksumhelper
         self.filename_hash_dict = {}
 
     def set_hash_for_file(self, algo, file_path, hash_str):
         """
-        param algo:
-        param file_path:
-        param hash_str:
-        return None
+        Sets hash value in HashFile for specified file_path
+
+        :param algo: Name string of used hash algorithm
+        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
+                          gets normalized here
+        :param hash_str:  Hex-string representation of file hash
         """
         self.filename_hash_dict[os.path.normpath(file_path)] = (hash_str, algo)
 
     def get_hash_by_file_path(self, file_path):
         """
-        Pass in file_path (normalized using normpath) to get stored hash for
+        Pass in file_path (normalized here using normpath) to get stored hash for
         that path
         KeyError -> None
 
-        :param file_path: normpath() normalized file_path
+        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
         :return: Tuple of hash in hex and name of used hash algorithm
         """
+        # filename_hash_dict uses normalized paths as keys
+        file_path = os.path.normpath(file_path)
         try:
             return self.filename_hash_dict[file_path]
         except KeyError:
@@ -323,5 +362,7 @@ class MixedAlgoHashCollection:
 
 
 if __name__ == "__main__":
-    c = ChecksumHelper("./tt", hash_filename_filter=("test", ))
-    c.do_incremental_checksums("sha512")
+    pass
+    # c = ChecksumHelper("./tests/tmp/tt", hash_filename_filter=("test", ))
+    # c.options["include_unchanged_files_incremental"] = True
+    # c.do_incremental_checksums("sha512")
