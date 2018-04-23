@@ -3,6 +3,7 @@ import os
 import time
 import hashlib
 import logging
+import argparse
 
 from logging.handlers import RotatingFileHandler
 
@@ -80,14 +81,24 @@ HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
 DIR_SUBSTR_EXCLUDE = (".git")
 
 
-def discover_hash_files(start_path, depth=3, exclude_str_filename=None):
+def discover_hash_files(start_path, depth=2, exclude_str_filename=None):
     if exclude_str_filename is None:
         exclude_str_filename = ()
-    current_depth = 1
+
+    # os.walk invokes os.path.join to build the 'top' directory name on each iteration; the count
+    # of path separators (that is, os.sep) in each directory name is related to its depth. Just
+    # substract the starting count to obtain a relative depth.
+    # Note that mixing \ and / in the initial directory (both are allowed on Windows) doesn't
+    # affect the result, neither using absolute or relative directory names.
+    starting_level = start_path.count(os.sep)
     hashfiles = []
     for dirpath, dirnames, fnames in os.walk(start_path):
+        current_depth = dirpath.count(os.sep) - starting_level
         if current_depth == depth:
-            break
+            # dirnames[:] = [] changes list in-place whereas dirnames=[] just reassigsn/rebinds
+            # the variable to a new list while the original list (which os.walk is using remains
+            # unchanged; also possible to use del but this would break code below
+            dirnames[:] = []
         # When topdown is true, the caller can modify the dirnames list in-place (e.g., via del
         # or slice assignment), and walk will only recurse into the subdirectories whose names
         # remain in dirnames; this can be used to prune the search...
@@ -98,8 +109,6 @@ def discover_hash_files(start_path, depth=3, exclude_str_filename=None):
             if ext in HASH_FILE_EXTENSIONS and all(
                     (s not in name for s in exclude_str_filename)):
                 hashfiles.append(os.path.join(dirpath, fname))
-
-        current_depth += 1
 
     return hashfiles
 
@@ -132,7 +141,7 @@ class ChecksumHelper:
             logger.warning("Empty string ("") was included in hash_filename_filter "
                            "this means that all hash files will be filtered out!!")
 
-        self.options = {"include_unchanged_files_incremental": False}
+        self.options = {"include_unchanged_files_incremental": True}
 
     def discover_hash_files(self):
         hash_files = discover_hash_files(".", exclude_str_filename=self.hash_filename_filter)
@@ -361,8 +370,34 @@ class MixedAlgoHashCollection:
             return None, None
 
 
+# TODO(moe): write method for MixedAlgoHashCollection
+
+# checking for change based mtimes -> save in own file format(txt)?
+# -> NO since we always want to verify that old files (that shouldnt have changed)
+# -> still match their checksums
+
+
 if __name__ == "__main__":
-    pass
+    parser = argparse.ArgumentParser(description="Combine discovered checksum files into one with the most "
+                                                 "current checksums or build a new incremental checksum "
+                                                 "file for the specified dir and all subdirs")
+
+    subparsers = parser.add_subparsers(title='subcommands', description='valid subcommands',
+                                       help='sub-command help', dest="subcmd")  # save name of used subcmd in var
+
+    incremental = subparsers.add_parser("incremental", aliases=["inc"])
+    incremental.add_argument("path", type=str)
+    incremental.add_argument("-fu", "--filter-unchanged", action="store_true",
+                             help="Dont include the checksum of unchanged files in the output")
+    incremental.add_argument("-d", "--discover-hashfiles-depth", default=0, type=int,
+                             help="Number of subdirs to descend down to search for hash files; "
+                                  "0 -> root dir only")
+    # metavar is name used placeholder in help text
+    incremental.add_argument("-hf", "--hash-filename-filter", nargs="+", metavar="SUBSTRING",
+                             help="Substrings in filenames of hashfiles to exclude from search",
+                             type=str)
+    # set funct to call when subcommand is used
+    incremental.set_defaults(func=_cl_link)
     # c = ChecksumHelper("./tests/tmp/tt", hash_filename_filter=("test", ))
     # c.options["include_unchanged_files_incremental"] = True
     # c.do_incremental_checksums("sha512")
