@@ -78,7 +78,8 @@ def build_hashfile_str(*filename_hash_pairs):
 
 # TODO pass hash files directly using cl args
 HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
-DIR_SUBSTR_EXCLUDE = (".git")
+# forgot the comma again for single value tuple!!!!!!
+DIR_SUBSTR_EXCLUDE = (".git",)
 
 
 def discover_hash_files(start_path, depth=2, exclude_str_filename=None):
@@ -99,10 +100,12 @@ def discover_hash_files(start_path, depth=2, exclude_str_filename=None):
             # the variable to a new list while the original list (which os.walk is using remains
             # unchanged; also possible to use del but this would break code below
             dirnames[:] = []
-        # When topdown is true, the caller can modify the dirnames list in-place (e.g., via del
-        # or slice assignment), and walk will only recurse into the subdirectories whose names
-        # remain in dirnames; this can be used to prune the search...
-        dirnames[:] = [d for d in dirnames if not any(ss in d for ss in DIR_SUBSTR_EXCLUDE)]
+
+        if dirnames:
+            # When topdown is true, the caller can modify the dirnames list in-place (e.g., via del
+            # or slice assignment), and walk will only recurse into the subdirectories whose names
+            # remain in dirnames; this can be used to prune the search...
+            dirnames[:] = [d for d in dirnames if not any(ss in d for ss in DIR_SUBSTR_EXCLUDE)]
 
         for fname in fnames:
             name, ext = fname.rsplit(".", 1)
@@ -119,7 +122,9 @@ class ChecksumHelper:
         self.root_dir_abs = os.path.abspath(self.root_dir)
         # set working dir to root_dir
         os.chdir(root_dir)
+        logger.debug("Set root_dir to %s", self.root_dir_abs)
         self.root_dir_name = os.path.basename(os.path.abspath(self.root_dir))
+
         self.all_hash_files = []
         # HashFile containing the most current hashes from all the combined hash
         # files that were found using discover_hash_files
@@ -141,10 +146,14 @@ class ChecksumHelper:
             logger.warning("Empty string ("") was included in hash_filename_filter "
                            "this means that all hash files will be filtered out!!")
 
-        self.options = {"include_unchanged_files_incremental": True}
+        self.options = {
+                "include_unchanged_files_incremental": True,
+                "discover_hash_files_depth": 0,
+        }
 
     def discover_hash_files(self):
-        hash_files = discover_hash_files(".", exclude_str_filename=self.hash_filename_filter)
+        hash_files = discover_hash_files(".", depth=self.options["discover_hash_files_depth"],
+                                         exclude_str_filename=self.hash_filename_filter)
         self.all_hash_files = [HashFile(self, hfile_path) for hfile_path in hash_files]
 
     def read_all_hash_files(self):
@@ -161,7 +170,7 @@ class ChecksumHelper:
         if not self.hash_files_initialized():
             self.read_all_hash_files()
 
-        used_algos = set((hash_file.hash_type for hash_file in self.all_hash_files))
+        used_algos = list(set((hash_file.hash_type for hash_file in self.all_hash_files)))
         self.sort_hash_files_by_mtime()
 
         if len(used_algos) == 1:
@@ -369,8 +378,47 @@ class MixedAlgoHashCollection:
         except KeyError:
             return None, None
 
+    def to_single_hash_file(self, convert_algo_name):
+        most_current_single = HashFile(self, "most_current_"
+                                       f"{time.strftime('%Y-%m-%d')}.{convert_algo_name}")
+        # file_path is key and use () to also unpack value which is a 2-tuple
+        for file_path, (hash_str, algo_name) in self.filename_hash_dict.items():
+            if algo_name != convert_algo_name:
+                # verify stored hash using old algo still matches
+                new_hash = gen_hash_from_file(file_path, algo_name)
+                if new_hash != hash_str:
+                    logger.info("File doesnt match most current hash: %s!", hash_str)
+                new_hash = gen_hash_from_file(file_path, convert_algo_name)
 
-# TODO(moe): write method for MixedAlgoHashCollection
+                most_current_single.set_hash_for_file(file_path, new_hash)
+            else:
+                most_current_single.set_hash_for_file(file_path, hash_str)
+
+        return most_current_single
+
+
+def _cl_incremental(args):
+    c = ChecksumHelper(args.path,
+                       hash_filename_filter=args.hash_filename_filter)
+    c.options["include_unchanged_files_incremental"] = False if args.filter_unchanged else True
+    c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
+    c.do_incremental_checksums(args.hash_algorithm)
+
+
+def _cl_build_most_current(args):
+    c = ChecksumHelper(args.path,
+                       hash_filename_filter=args.hash_filename_filter)
+    c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
+    c.build_most_current()
+    if isinstance(c.hash_file_most_current, MixedAlgoHashCollection):
+        c.hash_file_most_current = c.hash_file_most_current.to_single_hash_file(args.hash_algorithm)
+    if args.filter_deleted:
+        c.hash_file_most_current.filter_deleted_files()
+    #print(vars(c))
+    c.hash_file_most_current.write()
+
+
+# TODO(moe): test for build_most_current
 
 # checking for change based mtimes -> save in own file format(txt)?
 # -> NO since we always want to verify that old files (that shouldnt have changed)
@@ -378,26 +426,52 @@ class MixedAlgoHashCollection:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Combine discovered checksum files into one with the most "
-                                                 "current checksums or build a new incremental checksum "
-                                                 "file for the specified dir and all subdirs")
+    parser = argparse.ArgumentParser(description="Combine discovered checksum files into one with "
+                                                 "the most current checksums or build a new "
+                                                 "incremental checksum file for the specified dir "
+                                                 "and all subdirs")
 
     subparsers = parser.add_subparsers(title='subcommands', description='valid subcommands',
                                        help='sub-command help', dest="subcmd")  # save name of used subcmd in var
 
     incremental = subparsers.add_parser("incremental", aliases=["inc"])
+    incremental.add_argument("hash_algorithm", type=str)
     incremental.add_argument("path", type=str)
     incremental.add_argument("-fu", "--filter-unchanged", action="store_true",
                              help="Dont include the checksum of unchanged files in the output")
-    incremental.add_argument("-d", "--discover-hashfiles-depth", default=0, type=int,
+    incremental.add_argument("-d", "--discover-hash-files-depth", default=0, type=int,
                              help="Number of subdirs to descend down to search for hash files; "
-                                  "0 -> root dir only")
+                                  "0 -> root dir only, -1 -> max depth")
     # metavar is name used placeholder in help text
     incremental.add_argument("-hf", "--hash-filename-filter", nargs="+", metavar="SUBSTRING",
                              help="Substrings in filenames of hashfiles to exclude from search",
                              type=str)
-    # set funct to call when subcommand is used
-    incremental.set_defaults(func=_cl_link)
-    # c = ChecksumHelper("./tests/tmp/tt", hash_filename_filter=("test", ))
-    # c.options["include_unchanged_files_incremental"] = True
-    # c.do_incremental_checksums("sha512")
+    # set func to call when subcommand is used
+    incremental.set_defaults(func=_cl_incremental)
+
+
+    build_most_current = subparsers.add_parser("build-most-current", aliases=["build"])
+    build_most_current.add_argument("path", type=str)
+    build_most_current.add_argument("-alg", "--hash-algorithm", type=str, default="sha512",
+                                    help="If most current hashes include mixed algorithms, "
+                                         "the specified one will be used to re-do the hash",
+                                         choices=("md5", "sha256", "sha512"))
+    # store_true -> default false, when specified true <-> store_false reversed
+    build_most_current.add_argument("-fd", "--filter-deleted", action="store_false",
+                                    help="Dont filter out deleted files in most_current hash file")
+    build_most_current.add_argument("-d", "--discover-hash-files-depth", default=3, type=int,
+                                    help="Number of subdirs to descend down to search for "
+                                    "hash files; 0 -> root dir only, -1 -> max depth")
+    # metavar is name used placeholder in help text
+    build_most_current.add_argument("-hf", "--hash-filename-filter", nargs="+", 
+                                    metavar="SUBSTRING", type=str, help="Substrings in "
+                                    "filenames of hashfiles to exclude from search")
+    # set func to call when subcommand is used
+    build_most_current.set_defaults(func=_cl_build_most_current)
+
+    args = parser.parse_args()
+    if len(sys.argv) == 1:
+        # default to stdout, but stderr would be better (use sys.stderr, then exit(1))
+        parser.print_help()
+        sys.exit(0)
+    args.func(args)
