@@ -33,15 +33,19 @@ def test_build_most_current(hash_fn_filter, search_depth, filter_deleted, verifi
     checksum_hlpr.options["discover_hash_files_depth"] = search_depth
     checksum_hlpr.hash_filename_filter = hash_fn_filter
     checksum_hlpr.build_most_current()
-    if isinstance(checksum_hlpr.hash_file_most_current, MixedAlgoHashCollection):
-        checksum_hlpr.hash_file_most_current = checksum_hlpr.hash_file_most_current.to_single_hash_file("sha512")
+    hf_most_current = checksum_hlpr.hash_file_most_current
+    if isinstance(hf_most_current, MixedAlgoHashCollection):
+        hf_most_current = hf_most_current.to_single_hash_file(
+                                   f"{checksum_hlpr.root_dir_name}_most_current_"
+                                   f"{time.strftime('%Y-%m-%d')}.sha512",
+                                   "sha512")
     if filter_deleted:
-        checksum_hlpr.hash_file_most_current.filter_deleted_files()
-    checksum_hlpr.hash_file_most_current.write()
+        hf_most_current.filter_deleted_files()
+    hf_most_current.write()
 
     verified_sha_contents = read_file(os.path.join(TESTS_DIR, "test_build_most_current_files",
                                                    verified_sha_name))
-    generated_sha_name = f"most_current_{time.strftime('%Y-%m-%d')}.sha512"
+    generated_sha_name = f"{checksum_hlpr.root_dir_name}_most_current_{time.strftime('%Y-%m-%d')}.sha512"
     generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
 
     assert(verified_sha_contents == generated_sha_contents)

@@ -76,7 +76,6 @@ def build_hashfile_str(*filename_hash_pairs):
     return "\n".join(final_str_ln)
 
 
-# TODO pass hash files directly using cl args
 HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
 # forgot the comma again for single value tuple!!!!!!
 DIR_SUBSTR_EXCLUDE = (".git",)
@@ -175,7 +174,7 @@ class ChecksumHelper:
 
         if len(used_algos) == 1:
             single_algo = True
-            self.hash_file_most_current = HashFile(self, "most_current_"
+            self.hash_file_most_current = HashFile(self, f"{self.root_dir_name}_most_current_"
                                                    f"{time.strftime('%Y-%m-%d')}.{used_algos[0]}")
         else:
             single_algo = False
@@ -378,9 +377,8 @@ class MixedAlgoHashCollection:
         except KeyError:
             return None, None
 
-    def to_single_hash_file(self, convert_algo_name):
-        most_current_single = HashFile(self, "most_current_"
-                                       f"{time.strftime('%Y-%m-%d')}.{convert_algo_name}")
+    def to_single_hash_file(self, name, convert_algo_name):
+        most_current_single = HashFile(self, name)
         # file_path is key and use () to also unpack value which is a 2-tuple
         for file_path, (hash_str, algo_name) in self.filename_hash_dict.items():
             if algo_name != convert_algo_name:
@@ -411,14 +409,15 @@ def _cl_build_most_current(args):
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.build_most_current()
     if isinstance(c.hash_file_most_current, MixedAlgoHashCollection):
-        c.hash_file_most_current = c.hash_file_most_current.to_single_hash_file(args.hash_algorithm)
+        c.hash_file_most_current = c.hash_file_most_current.to_single_hash_file(
+                                   f"{c.root_dir_name}_most_current_"
+                                   f"{time.strftime('%Y-%m-%d')}.{args.hash_algorithm}",
+                                   args.hash_algorithm)
     if args.filter_deleted:
         c.hash_file_most_current.filter_deleted_files()
     #print(vars(c))
     c.hash_file_most_current.write()
 
-
-# TODO(moe): test for build_most_current
 
 # checking for change based mtimes -> save in own file format(txt)?
 # -> NO since we always want to verify that old files (that shouldnt have changed)
@@ -448,7 +447,6 @@ if __name__ == "__main__":
                              type=str)
     # set func to call when subcommand is used
     incremental.set_defaults(func=_cl_incremental)
-
 
     build_most_current = subparsers.add_parser("build-most-current", aliases=["build"])
     build_most_current.add_argument("path", type=str)
