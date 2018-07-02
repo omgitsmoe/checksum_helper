@@ -107,7 +107,11 @@ def discover_hash_files(start_path, depth=2, exclude_str_filename=None):
             dirnames[:] = [d for d in dirnames if not any(ss in d for ss in DIR_SUBSTR_EXCLUDE)]
 
         for fname in fnames:
-            name, ext = fname.rsplit(".", 1)
+            try:
+                name, ext = fname.rsplit(".", 1)
+            except ValueError:
+                # no file extentsion
+                continue
             if ext in HASH_FILE_EXTENSIONS and all(
                     (s not in name for s in exclude_str_filename)):
                 hashfiles.append(os.path.join(dirpath, fname))
@@ -313,10 +317,23 @@ class HashFile:
     def read(self):
         self.mtime = os.stat(self.get_path()).st_mtime
         # first line had \ufeff which is the BOM for utf-8 with bom
-        with open(self.get_path(), "r", encoding="UTF-8") as f:
-            # remove BOM (byte order mark) char at beginning of document
-            # present if its UTF-8 with BOM
-            text = f.read().lstrip(u'\ufeff')
+        with open(self.get_path(), "r", encoding="UTF-8-SIG") as f:
+            # .lstrip(u'\ufeff')
+            # ^ remove BOM (byte order mark) char at beginning of document
+            # present if its UTF-8 with BOM - below does the same
+            # use 'utf-8-sig', which expects and strips off the UTF-8 Byte Order Mark, which
+            # is what shows up as ï»¿.
+            try:
+                text = f.read()
+            except UnicodeDecodeError:
+                # utf-8 couldnt decode file try ANSI encoding
+                # which is "cp1252" on my system
+                # re-assigning f should work since were opening the same file in the same
+                # process but to be extra safe use a new var
+                af = open(self.get_path(), "r", encoding="cp1252")
+                text = af.read()
+                # context manager doesnt work now so close file manually
+                af.close()
 
         for ln in text.splitlines():
             try:
