@@ -269,6 +269,28 @@ class ChecksumHelper:
     def sort_hash_files_by_mtime(self):
         self.all_hash_files = sorted(self.all_hash_files, key=lambda x: x.mtime)
 
+    def check_missing_files(self):
+        """
+        Check if all files in subdirs of root_dir are represented in hash_file_most_current
+        """
+        if not self.hash_file_most_current:
+            self.build_most_current()
+
+        file_paths = self.hash_file_most_current.filename_hash_dict.keys()
+        all_files = set()
+
+        for dirpath, dirnames, fnames in os.walk("."):
+            for fname in fnames:
+                # normpath otherwise generated file paths might be different
+                # even though they point to the same location
+                file_path = os.path.normpath(os.path.join(dirpath, fname))
+                all_files.add(file_path)
+
+        missing_files = all_files - file_paths
+        print("Files without checksum (of all files in subdirs, not checked if"
+              "checksums still match the files!):")
+        print("\n".join(missing_files))
+
 
 class HashFile:
     def __init__(self, handling_checksumhelper, path_to_hash_file):
@@ -411,6 +433,11 @@ class MixedAlgoHashCollection:
 
         return most_current_single
 
+def _cl_check_missing(args):
+    c = ChecksumHelper(args.path,
+                       hash_filename_filter=args.hash_filename_filter)
+    c.check_missing_files()
+
 
 def _cl_incremental(args):
     c = ChecksumHelper(args.path,
@@ -483,6 +510,15 @@ if __name__ == "__main__":
                                     "filenames of hashfiles to exclude from search")
     # set func to call when subcommand is used
     build_most_current.set_defaults(func=_cl_build_most_current)
+
+    check_missing = subparsers.add_parser("check-missing", aliases=["check"])
+    check_missing.add_argument("path", type=str)
+    # metavar is name used placeholder in help text
+    check_missing.add_argument("-hf", "--hash-filename-filter", nargs="+", 
+                                    metavar="SUBSTRING", type=str, help="Substrings in "
+                                    "filenames of hashfiles to exclude from search")
+    # set func to call when subcommand is used
+    check_missing.set_defaults(func=_cl_check_missing)
 
     args = parser.parse_args()
     if len(sys.argv) == 1:
