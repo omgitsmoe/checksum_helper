@@ -280,8 +280,36 @@ class ChecksumHelper:
 
         file_paths = self.hash_file_most_current.filename_hash_dict.keys()
         all_files = set()
+        dirs = set()
+        # account for a filename filter or dir without files and just subdirs
+        # causing dirpath not being in dirs but deleting it from dirnames means
+        # that we dont descend into any subdirs of that folder either
+        # -> create set of all directory paths (and all of its sub-paths (dirs leading up to dir) to
+        # account for dirs without (checksummed) files)
+        for fp in file_paths:
+            dirname = os.path.dirname(fp)
+            while dirname:
+                dirs.add(dirname)
+                dirname = os.path.dirname(dirname)
+
+        missing_dirs = []
 
         for dirpath, dirnames, fnames in os.walk("."):
+            dirnames_filtered = []
+            for dn in dirnames:
+                # dirpath is path to current dir
+                # use normpath to remove ./ or .\ at start of path, relpath also works
+                dirpath_dirname = os.path.normpath(os.path.join(dirpath, dn))
+
+                # filter out directories that dont contain any checksummed files
+                if dirpath_dirname not in dirs:
+                    missing_dirs.append(dirpath_dirname)
+                else:
+                    # IMPORTANT append dirname not combined dirpath and name!
+                    dirnames_filtered.append(dn)
+
+            dirnames[:] = dirnames_filtered
+
             for fname in fnames:
                 # normpath otherwise generated file paths might be different
                 # even though they point to the same location
@@ -289,9 +317,14 @@ class ChecksumHelper:
                 all_files.add(file_path)
 
         missing_files = all_files - file_paths
-        print("Files without checksum (of all files in subdirs, not checked if "
-              "checksums still match the files!):")
-        print("\n".join(missing_files))
+        # TODO test dir aggregation
+        if missing_dirs or missing_files:
+            print("!!! NOT CHECKED IF CHECKSUMS STILL MATCH THE FILES !!!")
+            print("Directories (D - where all files including subdirs are missing checksums) "
+                  "and files (F) without checksum:")
+            missing_format = [f"D    {dp}" for dp in missing_dirs]
+            missing_format.extend((f"F    {fp}" for fp in sorted(missing_files)))
+            print("\n".join(missing_format))
 
 
 class HashFile:
