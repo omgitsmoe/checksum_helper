@@ -13,6 +13,7 @@ MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
 logger = logging.getLogger("Checksum_Helper")
 logger.setLevel(logging.DEBUG)
 
+# TODO exclude own logs from checksums
 handler = RotatingFileHandler(
     os.path.join(MODULE_PATH, "chsmhlpr.log"),
     maxBytes=1048576,
@@ -152,6 +153,8 @@ class ChecksumHelper:
         self.options = {
                 "include_unchanged_files_incremental": True,
                 "discover_hash_files_depth": 0,
+				"filename_filter": ["!*.log"],
+                "directory_filter": ["!__pycache__"],
         }
 
     def discover_hash_files(self):
@@ -248,8 +251,7 @@ class ChecksumHelper:
             new_hash = gen_hash_from_file(file_path, hash_algo_str)
             if new_hash == old_hash:
                 logger.debug("Old and new hashes match for file %s!", file_path)
-                include = False if not self.options[
-                        "include_unchanged_files_incremental"] else True
+                include = self.options["include_unchanged_files_incremental"]
             else:
                 logger.info("File \"%s\" changed, a new hash was generated!", file_path)
                 include = True
@@ -287,7 +289,7 @@ class ChecksumHelper:
                 all_files.add(file_path)
 
         missing_files = all_files - file_paths
-        print("Files without checksum (of all files in subdirs, not checked if"
+        print("Files without checksum (of all files in subdirs, not checked if "
               "checksums still match the files!):")
         print("\n".join(missing_files))
 
@@ -306,6 +308,15 @@ class HashFile:
         # path to dir of hash file -> relpath from self.handling_checksumhelper.root_dir
         # since we set cwd to self.handling_checksumhelper.root_dir
         self.hash_type = self.filename.rsplit(".", 1)[-1]
+
+    def __contains__(self, file_path):
+        return os.path.normpath(file_path) in self.filename_hash_dict
+
+    def __iter__(self):
+        return iter(self.filename_hash_dict)
+
+    def __len__(self):
+        return len(self.filename_hash_dict)
 
     def get_hash_by_file_path(self, file_path):
         """
@@ -389,6 +400,15 @@ class MixedAlgoHashCollection:
         self.handling_checksumhelper = handling_checksumhelper
         self.filename_hash_dict = {}
 
+    def __contains__(self, file_path):
+        return os.path.normpath(file_path) in self.filename_hash_dict
+
+    def __iter__(self):
+        return iter(self.filename_hash_dict)
+
+    def __len__(self):
+        return len(self.filename_hash_dict)
+
     def set_hash_for_file(self, algo, file_path, hash_str):
         """
         Sets hash value in HashFile for specified file_path
@@ -433,6 +453,7 @@ class MixedAlgoHashCollection:
 
         return most_current_single
 
+
 def _cl_check_missing(args):
     c = ChecksumHelper(args.path,
                        hash_filename_filter=args.hash_filename_filter)
@@ -459,7 +480,6 @@ def _cl_build_most_current(args):
                                    args.hash_algorithm)
     if args.filter_deleted:
         c.hash_file_most_current.filter_deleted_files()
-    #print(vars(c))
     c.hash_file_most_current.write()
 
 
@@ -469,30 +489,46 @@ def _cl_build_most_current(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Combine discovered checksum files into one with "
-                                                 "the most current checksums or build a new "
-                                                 "incremental checksum file for the specified dir "
-                                                 "and all subdirs")
+    parser = argparse.ArgumentParser(description="Combine discovered checksum files into "
+                                                 "one with the most current checksums or "
+                                                 "build a new incremental checksum file "
+                                                 "for the specified dir and all subdirs")
 
+    # save name of used subcmd in var subcmd
     subparsers = parser.add_subparsers(title='subcommands', description='valid subcommands',
-                                       help='sub-command help', dest="subcmd")  # save name of used subcmd in var
+                                       help='sub-command help', dest="subcmd")
+    # add parser that is used as parent parser for all subcmd parsers so they can have common
+    # options without adding arguments to each one
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    # all subcmd parsers will have options added here (as long as they have this parser as
+    # parent)
+    # metavar is name used placeholder in help text
+    parent_parser.add_argument("-hf", "--hash-filename-filter", nargs="+", metavar="SUBSTRING",
+                               help=("Substrings in filenames of hashfiles to exclude "
+                                     "from search"),
+                               type=str)
 
-    incremental = subparsers.add_parser("incremental", aliases=["inc"])
+    incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser])
     incremental.add_argument("hash_algorithm", type=str)
     incremental.add_argument("path", type=str)
     incremental.add_argument("-fu", "--filter-unchanged", action="store_true",
                              help="Dont include the checksum of unchanged files in the output")
     incremental.add_argument("-d", "--discover-hash-files-depth", default=0, type=int,
                              help="Number of subdirs to descend down to search for hash files; "
-                                  "0 -> root dir only, -1 -> max depth")
-    # metavar is name used placeholder in help text
-    incremental.add_argument("-hf", "--hash-filename-filter", nargs="+", metavar="SUBSTRING",
-                             help="Substrings in filenames of hashfiles to exclude from search",
+                             "0 -> root dir only, -1 -> max depth; Default: 0")
+    incremental.add_argument("-ff", "--filename-filter", nargs="+",
+                             help=("Filename pattern matching of files to be hashed; "
+                                   "Negate with '!pattern'"),
+                             type=str)
+    incremental.add_argument("-df", "--directoy-filter", nargs="+",
+                             help=("Directory name pattern matching of directories containing"
+                                   "files to be hashed; Negate with '!pattern'"),
                              type=str)
     # set func to call when subcommand is used
     incremental.set_defaults(func=_cl_incremental)
 
-    build_most_current = subparsers.add_parser("build-most-current", aliases=["build"])
+    build_most_current = subparsers.add_parser("build-most-current", aliases=["build"],
+                                               parents=[parent_parser])
     build_most_current.add_argument("path", type=str)
     build_most_current.add_argument("-alg", "--hash-algorithm", type=str, default="sha512",
                                     help="If most current hashes include mixed algorithms, "
@@ -504,19 +540,12 @@ if __name__ == "__main__":
     build_most_current.add_argument("-d", "--discover-hash-files-depth", default=3, type=int,
                                     help="Number of subdirs to descend down to search for "
                                     "hash files; 0 -> root dir only, -1 -> max depth")
-    # metavar is name used placeholder in help text
-    build_most_current.add_argument("-hf", "--hash-filename-filter", nargs="+", 
-                                    metavar="SUBSTRING", type=str, help="Substrings in "
-                                    "filenames of hashfiles to exclude from search")
     # set func to call when subcommand is used
     build_most_current.set_defaults(func=_cl_build_most_current)
 
-    check_missing = subparsers.add_parser("check-missing", aliases=["check"])
+    check_missing = subparsers.add_parser("check-missing", aliases=["check"],
+                                          parents=[parent_parser])
     check_missing.add_argument("path", type=str)
-    # metavar is name used placeholder in help text
-    check_missing.add_argument("-hf", "--hash-filename-filter", nargs="+", 
-                                    metavar="SUBSTRING", type=str, help="Substrings in "
-                                    "filenames of hashfiles to exclude from search")
     # set func to call when subcommand is used
     check_missing.set_defaults(func=_cl_check_missing)
 
