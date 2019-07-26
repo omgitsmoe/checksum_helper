@@ -490,6 +490,9 @@ class MixedAlgoHashCollection:
 def _cl_check_missing(args):
     c = ChecksumHelper(args.path,
                        hash_filename_filter=args.hash_filename_filter)
+    print("ATTENTION! By default ChecksumHelper finds all checlsum files in "
+          "sub-folders, if you want to limit the depth use the parameter -d")
+    c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.check_missing_files()
 
 
@@ -579,6 +582,9 @@ if __name__ == "__main__":
     check_missing = subparsers.add_parser("check-missing", aliases=["check"],
                                           parents=[parent_parser])
     check_missing.add_argument("path", type=str)
+    check_missing.add_argument("-d", "--discover-hash-files-depth", default=-1, type=int,
+                                    help="Number of subdirs to descend down to search for "
+                                    "hash files; 0 -> root dir only, -1 -> max depth")
     # set func to call when subcommand is used
     check_missing.set_defaults(func=_cl_check_missing)
 
