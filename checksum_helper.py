@@ -9,13 +9,13 @@ from logging.handlers import RotatingFileHandler
 
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
+LOG_BASENAME = "chsmhlpr.log"
 
 logger = logging.getLogger("Checksum_Helper")
 logger.setLevel(logging.DEBUG)
 
-# TODO exclude own logs from checksums
 handler = RotatingFileHandler(
-    os.path.join(MODULE_PATH, "chsmhlpr.log"),
+    os.path.join(MODULE_PATH, LOG_BASENAME),
     maxBytes=1048576,
     backupCount=5,
     encoding="UTF-8")
@@ -224,6 +224,11 @@ class ChecksumHelper:
 
         for dirpath, dirnames, fnames in os.walk("."):
             for fname in fnames:
+                # exclude own logs
+                if fname == LOG_BASENAME or (
+                        fname.startswith(LOG_BASENAME + '.') and
+                        fname.split(LOG_BASENAME + '.', 1)[1].isdigit()):
+                    continue
                 file_path = os.path.join(dirpath, fname)
                 new_hash, include = self._build_verfiy_hash(file_path, algo_name)
                 if include:
@@ -257,7 +262,8 @@ class ChecksumHelper:
                 include = True
 
             if algo_name != hash_algo_str:
-                logger.debug("Last hash used a different algorithm -> generating new hash!")
+                logger.debug("Last hash used %s as algorithm -> generating "
+                             "new hash with %s!", hash_algo_str, algo_name)
                 new_hash = gen_hash_from_file(file_path, algo_name)
                 include = True
 
@@ -402,6 +408,11 @@ class HashFile:
                 af.close()
 
         for ln in text.splitlines():
+            # TODO(m): support text mode?
+            # from GNU *sum utils:
+            # default mode is to print a line with checksum, a character
+            # indicating input mode ('*' for binary, space for text), and name
+            # for each FILE.
             try:
                 hash_str, file_path = ln.strip().split(" *", 1)
             except ValueError:
