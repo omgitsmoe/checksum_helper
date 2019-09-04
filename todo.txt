@@ -2,4 +2,3 @@
 - less logs?
 - only verify specific files/folders
 - cmd to move files and change/move checksum files so the paths still match
-- alert on absoulte paths in checksum files

@@ -407,6 +407,7 @@ class HashFile:
                 # context manager doesnt work now so close file manually
                 af.close()
 
+        warned_abspath = False
         for ln in text.splitlines():
             # TODO(m): support text mode?
             # from GNU *sum utils:
@@ -418,6 +419,11 @@ class HashFile:
             except ValueError:
                 logger.warning("Invalid line in hash file: %s", self.get_path())
                 continue
+
+            # alert on abspath in file
+            if not warned_abspath and (file_path == os.path.abspath(file_path)):
+                logger.warning("Found absolute path in hash file: %s", self.get_path())
+                warned_abspath = True
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
             self.filename_hash_dict[os.path.normpath(file_path)] = hash_str
