@@ -421,9 +421,18 @@ class HashFile:
                 continue
 
             # alert on abspath in file
-            if not warned_abspath and (file_path == os.path.abspath(file_path)):
-                logger.warning("Found absolute path in hash file: %s", self.get_path())
-                warned_abspath = True
+            if os.path.isabs(file_path):
+                if not warned_abspath:
+                    logger.warning("Found absolute path in hash file: %s", self.get_path())
+                    warned_abspath = True
+                # if drive letters dont match abort and let user handle this manually
+                if (os.path.splitdrive(os.path.abspath(self.get_path())) !=
+                        os.path.splitdrive(file_path)):
+                    raise AbspathDrivesDontMatch(
+                            "Drive letters of the hash file "
+                            f"'{os.path.abspath(self.get_path())}' and the absolute path "
+                            f"'{file_path}' don't match! This needs to be fixed manually!")
+
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
             self.filename_hash_dict[os.path.normpath(file_path)] = hash_str
@@ -502,6 +511,12 @@ class MixedAlgoHashCollection:
                 most_current_single.set_hash_for_file(file_path, hash_str)
 
         return most_current_single
+
+
+class AbspathDrivesDontMatch(Exception):
+    def __init__(self, *args, **kwargs):
+        # first arg is normally msg
+        super().__init__(*args, **kwargs)
 
 
 def _cl_check_missing(args):

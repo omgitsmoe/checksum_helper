@@ -1,4 +1,4 @@
 - exclude files/dirs from checksumming or only instead of blacklisting only checksum whitelisted
 - less logs?
 - only verify specific files/folders
-- cmd to move files and change/move checksum files so the paths still match
+- cmd to change/move checksum files so the paths still match
