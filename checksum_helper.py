@@ -52,6 +52,82 @@ def cli_yes_no(question_str):
             ans = input(f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
 
 
+def split_path(path_str):
+    result = []
+    sep = ('/', '\\')
+    if path_str[0] == '/':
+        logger.error("Absolute UNIX paths not supported!")
+        return None, None
+    elif path_str.startswith('\\\\'):
+        logger.error("UNC paths not supported!")
+        return None, None
+    elif path_str[0] == '\\':
+        logger.error("Path '%s' is wrongly formatted!", path_str)
+        return None, None
+
+    curr = ""
+    for c in path_str:
+        if c in sep:
+            if not curr:
+                # two seps in a row
+                logger.warning("Error: Two following separators in path: %s", path_str)
+                return None, None
+            result.append(curr)
+            curr = ""
+        else:
+            curr += c
+    # path ending in sep -> dont append empty string
+    filename = None
+    if path_str[-1] not in sep:  # ending in sep -> file path
+        filename = curr
+    return result, filename
+
+
+def move_fpath(abspath, mv_path):
+    """
+    C:\\test1\\test2\\test.txt, ..\\test3\\ -> C:\\test1\\test3\\test.txt
+    C:\\test1\\test2\\test.txt, ..\\test3\\test_mv.txt -> C:\\test1\\test3\\test_mv.txt
+    Assumes mv_path ending in a separator(/ or \) is a folder the file should be moved to
+    otherwise the path is assumed to be a file path
+    e.g. ./test/test2.txt -> file path, ./test/test2 or ./test/test2/ -> dir path
+    :param abspath: Absolute path to the file
+    :param mv_path: Absolute or relative path
+    """
+    # if its a file head is the dir and tail the file name
+    # if its a dir tail will be empty ONLY if path ends in / or \
+    head, tail = os.path.split(abspath)
+    mv_path_split, mv_filename = split_path(mv_path)
+    if mv_path_split is None:
+        logger.warning("Move path '%s' was in the wrong format!", mv_path)
+        return None
+    if os.path.isabs(mv_path):
+        if mv_filename is None:
+            return os.path.join(mv_path, tail)
+        return mv_path
+    else:
+        curr_path, fname = split_path(abspath)
+        if curr_path is None:
+            logger.warning("Source path '%s' was in the wrong format!", abspath)
+            return None
+
+        for cd in mv_path_split:
+            if cd == "..":
+                if len(curr_path) > 1:
+                    curr_path.pop()
+                else:
+                    logger.warning("Tried to go beyond root of drive!")
+                    return None
+            elif cd == ".":
+                continue
+            else:
+                curr_path.append(cd)
+        if mv_filename is None:
+            curr_path.append(tail)
+        else:
+            curr_path.append(mv_filename)
+        return os.sep.join(curr_path)
+
+
 def gen_hash_from_file(fname, hash_algo_str, _hex=True):
     # construct a hash object by calling the appropriate constructor function
     hash_obj = hashlib.new(hash_algo_str)
@@ -443,6 +519,32 @@ class HashFile:
             # TotalCommander needs UTF-8 BOM for checksum files so use UTF-8-SIG
             with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
                 w.write(hashfile_str)
+            return True
+        return False
+
+    def copy_to(self, mv_path):
+        abspath = os.path.abspath(self.get_path())
+        # differentiate between mv_path being rel or abspath
+        # error when trying to move to diff drive
+        if os.path.isabs(mv_path) and (
+                os.path.splitdrive(abspath)[0] != os.path.splitdrive(mv_path)):
+            logger.error("Can't move hash file to a different drive than the files it holds "
+                         "hashes for!")
+            return None
+        new_hash_file_dir, new_filename = os.path.split(move_fpath(abspath, mv_path))
+
+        # convert all relpaths in filename_hash_dict to absolute
+        # and convert to relative path starting from new_abspath
+        self.filename_hash_dict = {os.path.relpath(
+                            os.path.abspath(p),
+                            start=new_hash_file_dir): hash_str for p, hash_str
+                                  in self.filename_hash_dict.items()}
+
+        self.hash_file_dir, self.filename = new_hash_file_dir, new_filename
+        if self.write():
+            logger.info("Copied hash file to %s", os.path.join(new_hash_file_dir, new_filename))
+        else:
+            logger.error("ERROR copying hash file!")
 
     def update_from_dict(self, update_dict):
         # TODO(moe): check if dict matches setup of filename_hash_dict
@@ -551,6 +653,12 @@ def _cl_build_most_current(args):
     c.hash_file_most_current.write()
 
 
+def _cl_copy(args):
+    h = HashFile(None, args.source_path)
+    h.read()
+    h.copy_to(args.dest_path)
+
+
 # checking for change based mtimes -> save in own file format(txt)?
 # -> NO since we always want to verify that old files (that shouldnt have changed)
 # -> still match their checksums
@@ -615,10 +723,21 @@ if __name__ == "__main__":
                                           parents=[parent_parser])
     check_missing.add_argument("path", type=str)
     check_missing.add_argument("-d", "--discover-hash-files-depth", default=-1, type=int,
-                                    help="Number of subdirs to descend down to search for "
+                               help="Number of subdirs to descend down to search for "
                                     "hash files; 0 -> root dir only, -1 -> max depth")
     # set func to call when subcommand is used
     check_missing.set_defaults(func=_cl_check_missing)
+
+    copy = subparsers.add_parser("copy", aliases=["cp"], parents=[parent_parser])
+    copy.add_argument("source_path", type=str,
+                      help="Path to the hash file that should be copied")
+    copy.add_argument("dest_path", type=str,
+                      help="Absolute or relative path to destination of copied hash file "
+                           "(paths not ending in \\ or / are assumed to be file paths!): "
+                           "e.g. C:\\test\\photos.sha512, C:\\test\\, ../test/photos.sha512, "
+                           ".\\..\\test2\\")
+    # set func to call when subcommand is used
+    copy.set_defaults(func=_cl_copy)
 
     args = parser.parse_args()
     if len(sys.argv) == 1:
