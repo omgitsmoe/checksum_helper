@@ -531,7 +531,12 @@ class HashFile:
             logger.error("Can't move hash file to a different drive than the files it holds "
                          "hashes for!")
             return None
-        new_hash_file_dir, new_filename = os.path.split(move_fpath(abspath, mv_path))
+        # need to check that we dont get None from move_fpath
+        new_moved_path = move_fpath(abspath, mv_path)
+        if new_moved_path is None:
+            logger.error("Couldn't move file due to a faulty move path!")
+            return None
+        new_hash_file_dir, new_filename = os.path.split(new_moved_path)
 
         # convert all relpaths in filename_hash_dict to absolute
         # and convert to relative path starting from new_abspath
@@ -544,7 +549,7 @@ class HashFile:
         if self.write():
             logger.info("Copied hash file to %s", os.path.join(new_hash_file_dir, new_filename))
         else:
-            logger.error("ERROR copying hash file!")
+            logger.warning("Hash file was NOT copied!")
 
     def update_from_dict(self, update_dict):
         # TODO(moe): check if dict matches setup of filename_hash_dict
@@ -655,6 +660,9 @@ def _cl_build_most_current(args):
 
 def _cl_copy(args):
     h = HashFile(None, args.source_path)
+    # @Hack change cwd so relative paths in hash file can be correctly converted to
+    # abspath using os.path.abspath (which uses cwd as starting point)
+    os.chdir(os.path.dirname(args.source_path))
     h.read()
     h.copy_to(args.dest_path)
 
