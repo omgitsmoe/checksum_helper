@@ -502,8 +502,8 @@ class HashFile:
                     logger.warning("Found absolute path in hash file: %s", self.get_path())
                     warned_abspath = True
                 # if drive letters dont match abort and let user handle this manually
-                if (os.path.splitdrive(os.path.abspath(self.get_path())) !=
-                        os.path.splitdrive(file_path)):
+                if (os.path.splitdrive(os.path.abspath(self.get_path()))[0] !=
+                        os.path.splitdrive(file_path)[0]):
                     raise AbspathDrivesDontMatch(
                             "Drive letters of the hash file "
                             f"'{os.path.abspath(self.get_path())}' and the absolute path "
