@@ -1,4 +1,6 @@
 - exclude files/dirs from checksumming or only instead of blacklisting only checksum whitelisted
 - less logs?
 - only verify specific files/folders
+- test _cl_* functions directly if they do more than just setting options and call a func
+- refactor to only use abspath interally (only when writing to hash file use relpath)
     

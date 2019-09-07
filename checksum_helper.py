@@ -131,13 +131,17 @@ def move_fpath(abspath, mv_path):
 def gen_hash_from_file(fname, hash_algo_str, _hex=True):
     # construct a hash object by calling the appropriate constructor function
     hash_obj = hashlib.new(hash_algo_str)
-    # open file in read-only byte-mode
-    with open(fname, "rb") as f:
-        # only read in chunks of size 4096 bytes
-        for chunk in iter(lambda: f.read(4096), b""):
-            # update it with the data by calling update() on the object
-            # as many times as you need to iteratively update the hash
-            hash_obj.update(chunk)
+    try:
+        # open file in read-only byte-mode
+        with open(fname, "rb") as f:
+            # only read in chunks of size 4096 bytes
+            for chunk in iter(lambda: f.read(4096), b""):
+                # update it with the data by calling update() on the object
+                # as many times as you need to iteratively update the hash
+                hash_obj.update(chunk)
+    except FileNotFoundError:
+        logger.debug("Couldn't open file %s for hasing!", fname)
+        return None
     # get digest out of the object by calling digest() (or hexdigest() for hex-encoded string)
     if _hex:
         return hash_obj.hexdigest()
@@ -228,7 +232,7 @@ class ChecksumHelper:
 
         self.options = {
                 "include_unchanged_files_incremental": True,
-                "discover_hash_files_depth": 0,
+                "discover_hash_files_depth": -1,
 				"filename_filter": ["!*.log"],
                 "directory_filter": ["!__pycache__"],
         }
@@ -560,6 +564,41 @@ class HashFile:
                                    in self.filename_hash_dict.items() if os.path.isfile(
                                        os.path.join(self.hash_file_dir, fname))}
 
+    def verify(self, whitelist=None):
+        # TODO(m): whitelisting
+        crc_errors = []
+        missing = []
+        matches = 0
+        if not self.filename_hash_dict:
+            logger.info("There were no hashes to verify!")
+            return crc_errors, missing, matches
+
+        for fpath, expected_hash in self.filename_hash_dict.items():
+            current = gen_hash_from_file(fpath, self.hash_type)
+            if current is None:
+                missing.append(fpath)
+                logger.warning("%s: MISSING", fpath)
+            elif expected_hash == current:
+                matches += 1
+                logger.info("%s: OK", fpath)
+            else:
+                crc_errors.append(fpath)
+                logger.warning("%s: FAILED", fpath)
+
+        hf_path = os.path.join(self.hash_file_dir, self.filename)
+        if matches and not crc_errors and not missing:
+            logger.info("%s: No missing files and all files matching their hashes", hf_path)
+        else:
+            if matches and not crc_errors:
+                logger.info("%s: All files matching their hashes!", hf_path)
+            else:
+                logger.warning("%s: %d files with wrong CRCs!", hf_path, len(crc_errors))
+            if not missing:
+                logger.info("%s: No missing files!", hf_path)
+            else:
+                logger.warning("%s: %d missing files!", hf_path, len(missing))
+        return crc_errors, missing, matches
+
 
 class MixedAlgoHashCollection:
     def __init__(self, handling_checksumhelper):
@@ -603,14 +642,14 @@ class MixedAlgoHashCollection:
             return None, None
 
     def to_single_hash_file(self, name, convert_algo_name):
-        most_current_single = HashFile(self, name)
+        most_current_single = HashFile(self.handling_checksumhelper, name)
         # file_path is key and use () to also unpack value which is a 2-tuple
         for file_path, (hash_str, algo_name) in self.filename_hash_dict.items():
             if algo_name != convert_algo_name:
                 # verify stored hash using old algo still matches
                 new_hash = gen_hash_from_file(file_path, algo_name)
                 if new_hash != hash_str:
-                    logger.info("File doesnt match most current hash: %s!", hash_str)
+                    logger.warning("File doesnt match most current hash: %s!", hash_str)
                 new_hash = gen_hash_from_file(file_path, convert_algo_name)
 
                 most_current_single.set_hash_for_file(file_path, new_hash)
@@ -618,6 +657,41 @@ class MixedAlgoHashCollection:
                 most_current_single.set_hash_for_file(file_path, hash_str)
 
         return most_current_single
+
+    def verify(self, whitelist=None):
+        # TODO(m): whitelisting
+        # @Duplicate almost duplicate of HashFile.verify
+        crc_errors = []
+        missing = []
+        matches = 0
+        if not self.filename_hash_dict:
+            logger.info("There were no hashes to verify!")
+            return crc_errors, missing, matches
+
+        for fpath, (hash_algo, expected_hash) in self.filename_hash_dict.items():
+            current = gen_hash_from_file(fpath, hash_algo)
+            if current is None:
+                missing.append(fpath)
+                logger.warning("%s: MISSING", fpath)
+            elif expected_hash == current:
+                matches += 1
+                logger.info("%s: %s OK", fpath, hash_algo.upper())
+            else:
+                crc_errors.append(fpath)
+                logger.warning("%s: %s FAILED", fpath, hash_algo.upper())
+
+        if matches and not crc_errors and not missing:
+            logger.info("No missing files and all files matching their hashes")
+        else:
+            if matches and not crc_errors:
+                logger.info("All files matching their hashes!")
+            else:
+                logger.warning("%d files with wrong CRCs!", len(crc_errors))
+            if not missing:
+                logger.info("No missing files!")
+            else:
+                logger.warning("%d missing files!", len(missing))
+        return crc_errors, missing, matches
 
 
 class AbspathDrivesDontMatch(Exception):
@@ -660,11 +734,45 @@ def _cl_build_most_current(args):
 
 def _cl_copy(args):
     h = HashFile(None, args.source_path)
+    h.read()
     # @Hack change cwd so relative paths in hash file can be correctly converted to
     # abspath using os.path.abspath (which uses cwd as starting point)
-    os.chdir(os.path.dirname(args.source_path))
-    h.read()
+    # dirname returns '' if its just a filename
+    os.chdir(os.path.dirname(args.source_path) if os.path.dirname(args.source_path) else '.')
     h.copy_to(args.dest_path)
+
+
+def _cl_verify_all(args):
+    # verify all found hashes of discovered hash files for all supplied paths
+    for root_p in args.root_dir:
+        c = ChecksumHelper(root_p, hash_filename_filter=args.hash_filename_filter)
+        c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
+        c.build_most_current()
+        # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
+        c.hash_file_most_current.verify()
+
+
+def _cl_verify_hfile(args):
+    # remember starting cwd since we need to change cwd to verify hash files
+    # but the paths of additional hash files wont be valid anymore so we have to change
+    # it back or con
+    starting_cwd = os.getcwd()
+    for hash_file in args.hash_file_name:
+        h = HashFile(None, hash_file)
+        h.read()
+        # @Hack change cwd so relative paths in hash file are valid
+        # dirname returns '' if its just a filename
+        os.chdir(os.path.dirname(hash_file) if os.path.dirname(hash_file) else '.')
+        h.verify()
+        os.chdir(starting_cwd)
+
+
+def _cl_verify_spec(args):
+    pass
+
+
+def _cl_verify_filter(args):
+    pass
 
 
 # checking for change based mtimes -> save in own file format(txt)?
@@ -680,7 +788,7 @@ if __name__ == "__main__":
 
     # save name of used subcmd in var subcmd
     subparsers = parser.add_subparsers(title='subcommands', description='valid subcommands',
-                                       help='sub-command help', dest="subcmd")
+                                       dest="subcmd")
     # add parser that is used as parent parser for all subcmd parsers so they can have common
     # options without adding arguments to each one
     parent_parser = argparse.ArgumentParser(add_help=False)
@@ -691,15 +799,19 @@ if __name__ == "__main__":
                                help=("Substrings in filenames of hashfiles to exclude "
                                      "from search"),
                                type=str)
+    parent_parser.add_argument("-d", "--discover-hash-files-depth", default=-1, type=int,
+                               help="Number of subdirs to descend down to search for hash files; "
+                                    "0 -> root dir only, -1 -> max depth; Default: -1")
 
-    incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser])
+    incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser],
+                                        help="Discover hash files in subdirectories and verify"
+                                             " found hashes and creating new hashes for new "
+                                             "files! (So not truly incremental). New hashes "
+                                             "(or all) will be written to file!")
     incremental.add_argument("hash_algorithm", type=str)
     incremental.add_argument("path", type=str)
-    incremental.add_argument("-fu", "--filter-unchanged", action="store_true",
+    incremental.add_argument("-fu", "--filter-unchanged", action="store_false",
                              help="Dont include the checksum of unchanged files in the output")
-    incremental.add_argument("-d", "--discover-hash-files-depth", default=0, type=int,
-                             help="Number of subdirs to descend down to search for hash files; "
-                             "0 -> root dir only, -1 -> max depth; Default: 0")
     incremental.add_argument("-ff", "--filename-filter", nargs="+",
                              help=("Filename pattern matching of files to be hashed; "
                                    "Negate with '!pattern'"),
@@ -712,7 +824,9 @@ if __name__ == "__main__":
     incremental.set_defaults(func=_cl_incremental)
 
     build_most_current = subparsers.add_parser("build-most-current", aliases=["build"],
-                                               parents=[parent_parser])
+                                               parents=[parent_parser],
+                                               help="Discover hash files in subdirectories and "
+                                                    "write the newest ones to file.")
     build_most_current.add_argument("path", type=str)
     build_most_current.add_argument("-alg", "--hash-algorithm", type=str, default="sha512",
                                     help="If most current hashes include mixed algorithms, "
@@ -721,22 +835,21 @@ if __name__ == "__main__":
     # store_true -> default false, when specified true <-> store_false reversed
     build_most_current.add_argument("-fd", "--filter-deleted", action="store_false",
                                     help="Dont filter out deleted files in most_current hash file")
-    build_most_current.add_argument("-d", "--discover-hash-files-depth", default=3, type=int,
-                                    help="Number of subdirs to descend down to search for "
-                                    "hash files; 0 -> root dir only, -1 -> max depth")
     # set func to call when subcommand is used
     build_most_current.set_defaults(func=_cl_build_most_current)
 
     check_missing = subparsers.add_parser("check-missing", aliases=["check"],
-                                          parents=[parent_parser])
+                                          parents=[parent_parser],
+                                          help="Check if all files in subdirectories have an"
+                                               " accompanying hash in a hash file. Hashes won't"
+                                               " be verified!")
     check_missing.add_argument("path", type=str)
-    check_missing.add_argument("-d", "--discover-hash-files-depth", default=-1, type=int,
-                               help="Number of subdirs to descend down to search for "
-                                    "hash files; 0 -> root dir only, -1 -> max depth")
     # set func to call when subcommand is used
     check_missing.set_defaults(func=_cl_check_missing)
 
-    copy = subparsers.add_parser("copy", aliases=["cp"], parents=[parent_parser])
+    copy = subparsers.add_parser("copy", aliases=["cp"],
+                                 help="Copy a hash file modifying the relative paths "
+                                      "within accordingly so they are still valid.")
     copy.add_argument("source_path", type=str,
                       help="Path to the hash file that should be copied")
     copy.add_argument("dest_path", type=str,
@@ -746,6 +859,48 @@ if __name__ == "__main__":
                            ".\\..\\test2\\")
     # set func to call when subcommand is used
     copy.set_defaults(func=_cl_copy)
+
+    # ------------ VERIFY SUBPARSER ----------------
+    verify = subparsers.add_parser("verify", aliases=["vf"], parents=[parent_parser],
+                                   help="Commands for verifying operations")
+    # add subparser for verify modes since we can't combine all the modes in one command
+    # without confusion
+    verify_subcmds = verify.add_subparsers(title='verify',
+                                           description='Commands for verfying operations',
+                                           dest="verisubcmd")
+    verify_all = verify_subcmds.add_parser("all", aliases=(), parents=[parent_parser],
+                                           help="Discover all hash files and verify the most "
+                                                "up-to-date file hashes found for given "
+                                                "directories")
+    verify_all.add_argument("root_dir", type=str, nargs='+',
+                            help="Root directory where we look for hash files in subdirectories")
+    # set func to call when subcommand is used
+    verify_all.set_defaults(func=_cl_verify_all)
+
+    verify_hfile = verify_subcmds.add_parser("hash_file", aliases=('hf',),
+                                             help="Verify all files in the specified hash files")
+    verify_hfile.add_argument("hash_file_name", type=str, nargs='+',
+                              help="Path to hash file(s)")
+    verify_hfile.set_defaults(func=_cl_verify_hfile)
+
+    verify_spec = verify_subcmds.add_parser("specific", aliases=('sp',), parents=[parent_parser],
+                                            help="Only verify the supplied files or directories")
+    verify_spec.add_argument("root_dir", type=str,
+                             help="Root directory where we look for hash files in subdirectories")
+    verify_spec.add_argument("path", type=str, nargs='+',
+                             help="Paths to directories or folders to verify")
+    verify_spec.set_defaults(func=_cl_verify_spec)
+
+    verify_filter = verify_subcmds.add_parser("filter", aliases=('f',), parents=[parent_parser],
+                                             help="Verify all files that match one of the"
+                                                  " supplied filters")
+    verify_filter.add_argument("root_dir", type=str,
+                               help="Root directory where we look for hash files in "
+                                    "subdirectories")
+    verify_filter.add_argument("filter", type=str, nargs='+',
+                               help="Filters that should be matched against files to verify")
+    verify_filter.set_defaults(func=_cl_verify_filter)
+    # ------------ END OF VERIFY SUBPARSER ----------------
 
     args = parser.parse_args()
     if len(sys.argv) == 1:
