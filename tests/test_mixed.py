@@ -86,6 +86,9 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     hf = hf_copyto(os.path.join(root_dir, "tt.sha512"), ".\\sub2\\tt_moved.sha512")
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub2", "tt_moved.sha512"))
+    # make sure hash_file_dir and filename were also updated
+    assert hf.hash_file_dir == os.path.join(root_dir, "sub2")
+    assert hf.filename == "tt_moved.sha512"
     # verifying the paths and hash strings are still correct by directly looping over
     # the filename_hash_dict
     for fpath, hash_str in hf.filename_hash_dict.items():
@@ -94,6 +97,9 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     hf = hf_copyto(os.path.join(root_dir, "sub2", "tt_moved.sha512"), "..\\sub1\\sub2\\tt_moved2.sha512")
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"))
+    # make sure hash_file_dir and filename were also updated
+    assert hf.hash_file_dir == os.path.join(root_dir, "sub1", "sub2")
+    assert hf.filename == "tt_moved2.sha512"
     # verifying the paths and hash strings are still correct by directly looping over
     # the filename_hash_dict
     for fpath, hash_str in hf.filename_hash_dict.items():
@@ -102,6 +108,9 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     hf = hf_copyto(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"), "..\\.\\tt_moved3.sha512")
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved3.sha512"))
+    # make sure hash_file_dir and filename were also updated
+    assert hf.hash_file_dir == os.path.join(root_dir, "sub1")
+    assert hf.filename == "tt_moved3.sha512"
     # verifying the paths and hash strings are still correct by directly looping over
     # the filename_hash_dict
     for fpath, hash_str in hf.filename_hash_dict.items():
