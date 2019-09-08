@@ -189,7 +189,7 @@ def gen_hash_from_file(fname, hash_algo_str, _hex=True):
                 # as many times as you need to iteratively update the hash
                 hash_obj.update(chunk)
     except FileNotFoundError:
-        logger.debug("Couldn't open file %s for hasing!", fname)
+        logger.debug("Couldn't open file %s for hashing!", fname)
         return None
     # get digest out of the object by calling digest() (or hexdigest() for hex-encoded string)
     if _hex:
@@ -720,7 +720,7 @@ class MixedAlgoHashCollection:
             logger.info("There were no hashes to verify!")
             return crc_errors, missing, matches
 
-        for fpath, (hash_algo, expected_hash) in self.filename_hash_dict.items():
+        for fpath, (expected_hash, hash_algo) in self.filename_hash_dict.items():
             if whitelist:
                 # skip file if we have a whitelist and there's no match
                 if not any(wildcard_match(pattern, fpath) for pattern in whitelist):
@@ -760,7 +760,7 @@ class AbspathDrivesDontMatch(Exception):
 def _cl_check_missing(args):
     c = ChecksumHelper(args.path,
                        hash_filename_filter=args.hash_filename_filter)
-    print("ATTENTION! By default ChecksumHelper finds all checlsum files in "
+    print("ATTENTION! By default ChecksumHelper finds all checksum files in "
           "sub-folders, if you want to limit the depth use the parameter -d")
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.check_missing_files()
