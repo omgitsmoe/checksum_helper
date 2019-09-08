@@ -52,6 +52,55 @@ def cli_yes_no(question_str):
             ans = input(f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
 
 
+def wildcard_match(pattern, text):
+    """
+    Adapted and fixed version from: https://www.tutorialspoint.com/Wildcard-Pattern-Matching
+    Original by Samual Sam
+    Wildcards:
+    '?' matches any one character
+    '*' matches any sequence of zero or more characters
+    """
+    n = len(text)
+    m = len(pattern)
+
+    # empty pattern
+    if m == 0:
+        return n == 0
+
+    i, j = 0, 0
+    text_ptr, pattern_ptr = -1, -1
+    while i < n:
+        # as ? used for one character
+        if j < m and pattern[j] == '?':
+            i += 1
+            j += 1
+        # as * used for one or more character
+        elif j < m and pattern[j] == '*':
+            text_ptr = i
+            pattern_ptr = j
+            j += 1
+        # matching text and pattern characters
+        elif j < m and text[i] == pattern[j]:
+            i += 1
+            j += 1
+        # pattern_ptr is already updated
+        elif pattern_ptr != -1:
+            j = pattern_ptr + 1
+            i = text_ptr + 1
+            text_ptr += 1
+        else:
+            return False
+
+    # move along left over * in pattern since they can represent empty string
+    while j < m and pattern[j] == '*':
+        j += 1  # j will increase when wildcard is *
+
+    # check whether pattern is finished or not
+    if j == m:
+        return True
+    return False
+
+
 def split_path(path_str):
     result = []
     sep = ('/', '\\')
@@ -565,7 +614,6 @@ class HashFile:
                                        os.path.join(self.hash_file_dir, fname))}
 
     def verify(self, whitelist=None):
-        # TODO(m): whitelisting
         crc_errors = []
         missing = []
         matches = 0
@@ -574,6 +622,11 @@ class HashFile:
             return crc_errors, missing, matches
 
         for fpath, expected_hash in self.filename_hash_dict.items():
+            if whitelist:
+                # skip file if we have a whitelist and there's no match
+                if not any(wildcard_match(pattern, fpath) for pattern in whitelist):
+                    continue
+
             current = gen_hash_from_file(fpath, self.hash_type)
             if current is None:
                 missing.append(fpath)
@@ -659,7 +712,6 @@ class MixedAlgoHashCollection:
         return most_current_single
 
     def verify(self, whitelist=None):
-        # TODO(m): whitelisting
         # @Duplicate almost duplicate of HashFile.verify
         crc_errors = []
         missing = []
@@ -669,6 +721,11 @@ class MixedAlgoHashCollection:
             return crc_errors, missing, matches
 
         for fpath, (hash_algo, expected_hash) in self.filename_hash_dict.items():
+            if whitelist:
+                # skip file if we have a whitelist and there's no match
+                if not any(wildcard_match(pattern, fpath) for pattern in whitelist):
+                    continue
+
             current = gen_hash_from_file(fpath, hash_algo)
             if current is None:
                 missing.append(fpath)
@@ -740,6 +797,7 @@ def _cl_copy(args):
     # dirname returns '' if its just a filename
     os.chdir(os.path.dirname(args.source_path) if os.path.dirname(args.source_path) else '.')
     h.copy_to(args.dest_path)
+    return h
 
 
 def _cl_verify_all(args):
@@ -767,12 +825,12 @@ def _cl_verify_hfile(args):
         os.chdir(starting_cwd)
 
 
-def _cl_verify_spec(args):
-    pass
-
-
 def _cl_verify_filter(args):
-    pass
+    c = ChecksumHelper(args.root_dir, hash_filename_filter=args.hash_filename_filter)
+    c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
+    c.build_most_current()
+    # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
+    c.hash_file_most_current.verify(whitelist=args.filter)
 
 
 # checking for change based mtimes -> save in own file format(txt)?
@@ -883,22 +941,15 @@ if __name__ == "__main__":
                               help="Path to hash file(s)")
     verify_hfile.set_defaults(func=_cl_verify_hfile)
 
-    verify_spec = verify_subcmds.add_parser("specific", aliases=('sp',), parents=[parent_parser],
-                                            help="Only verify the supplied files or directories")
-    verify_spec.add_argument("root_dir", type=str,
-                             help="Root directory where we look for hash files in subdirectories")
-    verify_spec.add_argument("path", type=str, nargs='+',
-                             help="Paths to directories or folders to verify")
-    verify_spec.set_defaults(func=_cl_verify_spec)
-
     verify_filter = verify_subcmds.add_parser("filter", aliases=('f',), parents=[parent_parser],
-                                             help="Verify all files that match one of the"
-                                                  " supplied filters")
+                                              help="Verify all files that match one of the"
+                                                   " supplied filters")
     verify_filter.add_argument("root_dir", type=str,
                                help="Root directory where we look for hash files in "
                                     "subdirectories")
     verify_filter.add_argument("filter", type=str, nargs='+',
-                               help="Filters that should be matched against files to verify")
+                               help="Wildcard filters that should be matched against files to "
+                                    "verify: ? matches any one char, * matches 0 or more chars")
     verify_filter.set_defaults(func=_cl_verify_filter)
     # ------------ END OF VERIFY SUBPARSER ----------------
 

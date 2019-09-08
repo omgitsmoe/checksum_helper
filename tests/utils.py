@@ -99,3 +99,9 @@ def setup_tmpdir_param():
         break
 
     return tmpdir
+
+
+# stub for testing the _cl funcs directly
+class Args:
+    def __init__(self, *args, **kwargs):
+        self.__dict__.update(kwargs)
