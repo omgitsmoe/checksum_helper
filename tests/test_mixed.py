@@ -74,8 +74,6 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     a = Args(source_path=os.path.join(root_dir, "tt.sha512"),
              dest_path=".\\sub2\\tt_moved.sha512")
     hf = _cl_copy(a)
-    # @Hack change cwd after copy so relative paths in hash file are valid for verifying
-    os.chdir(hf.hash_file_dir)
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub2", "tt_moved.sha512"))
     # make sure hash_file_dir and filename were also updated
@@ -89,8 +87,6 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     a = Args(source_path=os.path.join(root_dir, "sub2", "tt_moved.sha512"),
              dest_path="..\\sub1\\sub2\\tt_moved2.sha512")
     hf = _cl_copy(a)
-    # @Hack change cwd after copy so relative paths in hash file are valid for verifying
-    os.chdir(hf.hash_file_dir)
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"))
     # make sure hash_file_dir and filename were also updated
@@ -104,8 +100,6 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     a = Args(source_path=os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"),
              dest_path="..\\.\\tt_moved3.sha512")
     hf = _cl_copy(a)
-    # @Hack change cwd after copy so relative paths in hash file are valid for verifying
-    os.chdir(hf.hash_file_dir)
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved3.sha512"))
     # make sure hash_file_dir and filename were also updated
@@ -123,8 +117,6 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     a = Args(source_path=os.path.join(root_dir, "sub1", "tt_moved3.sha512"),
              dest_path="..\\\\tt_moved4.sha512")
     hf = _cl_copy(a)
-    # @Hack change cwd after copy so relative paths in hash file are valid for verifying
-    os.chdir(hf.hash_file_dir)
     # no file written
     assert not os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved4.sha512"))
     assert caplog.record_tuples == [
@@ -156,7 +148,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
 
     # even if we have 2 abspath in there we only warn once!
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, r'Found absolute path in hash file: .\warn.sha512'),
+        ('Checksum_Helper', logging.WARNING, r'Found absolute path in hash file: {}\warn.sha512'.format(tmpdir)),
     ]
 
     caplog.clear()
@@ -175,5 +167,5 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
     # might not include the whole msg?
     assert any([e_msg == str(excp.value) for e_msg in excp_msgs])
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, r'Found absolute path in hash file: .\crash.sha512'),
+        ('Checksum_Helper', logging.WARNING, r'Found absolute path in hash file: {}\crash.sha512'.format(os.path.join(TESTS_DIR, "test_abspath_warn_files"))),
     ]

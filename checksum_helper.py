@@ -251,12 +251,8 @@ def discover_hash_files(start_path, depth=2, exclude_str_filename=None):
 
 class ChecksumHelper:
     def __init__(self, root_dir, hash_filename_filter=None):
-        self.root_dir = os.path.normpath(root_dir)
-        self.root_dir_abs = os.path.abspath(self.root_dir)
-        # set working dir to root_dir
-        os.chdir(root_dir)
-        logger.debug("Set root_dir to %s", self.root_dir_abs)
-        self.root_dir_name = os.path.basename(os.path.abspath(self.root_dir))
+        self.root_dir = os.path.abspath(os.path.normpath(root_dir))
+        self.root_dir_name = os.path.basename(self.root_dir)
 
         self.all_hash_files = []
         # HashFile containing the most current hashes from all the combined hash
@@ -287,7 +283,8 @@ class ChecksumHelper:
         }
 
     def discover_hash_files(self):
-        hash_files = discover_hash_files(".", depth=self.options["discover_hash_files_depth"],
+        hash_files = discover_hash_files(self.root_dir,
+                                         depth=self.options["discover_hash_files_depth"],
                                          exclude_str_filename=self.hash_filename_filter)
         self.all_hash_files = [HashFile(self, hfile_path) for hfile_path in hash_files]
 
@@ -310,8 +307,10 @@ class ChecksumHelper:
 
         if len(used_algos) == 1:
             single_algo = True
-            self.hash_file_most_current = HashFile(self, f"{self.root_dir_name}_most_current_"
-                                                   f"{time.strftime('%Y-%m-%d')}.{used_algos[0]}")
+            self.hash_file_most_current = HashFile(
+                    self, os.path.join(self.root_dir,
+                                       f"{self.root_dir_name}_most_current_"
+                                       f"{time.strftime('%Y-%m-%d')}.{used_algos[0]}"))
         else:
             single_algo = False
             self.hash_file_most_current = MixedAlgoHashCollection(self)
@@ -324,17 +323,7 @@ class ChecksumHelper:
                 # since we add hashes from different files we have to combine the realtive
                 # path IN the hashfile with the path TO the hashfile
                 # to get a correct path
-                # BUT
                 combined_path = os.path.normpath(os.path.join(hash_file.hash_file_dir, file_path))
-                # relpath: Return a relative filepath to path either from the current directory or
-                # from an optional start directory
-                # NOTE(moe): we could either set the cwd to root dir and access everything with
-                # this path thats generated here or we could ignore the cwd and always
-                # do a join of root_dir and this path
-                # doing first -> dont use start=self.root_dir
-                combined_path = os.path.relpath(combined_path)
-                # NOTE(moe): here we could also check if file_path was an abspath with
-                # os.path.isabs then we could just use the abs path
                 if single_algo:
                     self.hash_file_most_current.set_hash_for_file(combined_path, hash_str)
                 else:
@@ -348,10 +337,11 @@ class ChecksumHelper:
         if not self.hash_file_most_current:
             self.build_most_current()
 
-        incremental = HashFile(self, f"{self.root_dir_name}_{time.strftime('%Y-%m-%d')}"
-                                     f".{algo_name}")
+        incremental = HashFile(
+                self, os.path.join(self.root_dir, f"{self.root_dir_name}_"
+                                                  f"{time.strftime('%Y-%m-%d')}.{algo_name}"))
 
-        for dirpath, dirnames, fnames in os.walk("."):
+        for dirpath, dirnames, fnames in os.walk(self.root_dir):
             for fname in fnames:
                 # exclude own logs
                 if fname == LOG_BASENAME or (
@@ -373,6 +363,7 @@ class ChecksumHelper:
     def _build_verfiy_hash(self, file_path, algo_name):
         new_hash = None
         include = None
+        # fpath is an absolute path
         old_hash, hash_algo_str = self.hash_file_most_current.get_hash_by_file_path(
                                   file_path)
         if old_hash is None:
@@ -381,7 +372,7 @@ class ChecksumHelper:
         else:
             # when building incremental hashfile we have to use
             # the hash type for which we have A HASH in most_current
-            # to find out of file changed -> changed -> use new hash type
+            # to find out if file changed -> changed -> use new hash type
             new_hash = gen_hash_from_file(file_path, hash_algo_str)
             if new_hash == old_hash:
                 logger.debug("Old and new hashes match for file %s!", file_path)
@@ -416,20 +407,23 @@ class ChecksumHelper:
         file_paths = self.hash_file_most_current.filename_hash_dict.keys()
         all_files = set()
         dirs = set()
+        # add root dir
+        dirs.add(self.root_dir)
         # account for a filename filter or dir without files and just subdirs
         # causing dirpath not being in dirs but deleting it from dirnames means
         # that we dont descend into any subdirs of that folder either
         # -> create set of all directory paths (and all of its sub-paths (dirs leading up to dir) to
         # account for dirs without (checksummed) files)
         for fp in file_paths:
-            dirname = os.path.dirname(fp)
-            while dirname:
+            # normalize path so the check for ..path in dirs.. later works properly
+            dirname = os.path.dirname(os.path.normpath(fp))
+            while dirname != self.root_dir:
                 dirs.add(dirname)
                 dirname = os.path.dirname(dirname)
 
         missing_dirs = []
 
-        for dirpath, dirnames, fnames in os.walk("."):
+        for dirpath, dirnames, fnames in os.walk(self.root_dir):
             dirnames_filtered = []
             for dn in dirnames:
                 # dirpath is path to current dir
@@ -452,13 +446,16 @@ class ChecksumHelper:
                 all_files.add(file_path)
 
         missing_files = all_files - file_paths
-        # TODO test dir aggregation
         if missing_dirs or missing_files:
             print("!!! NOT CHECKED IF CHECKSUMS STILL MATCH THE FILES !!!")
             print("Directories (D - where all files including subdirs are missing checksums) "
-                  "and files (F) without checksum:")
-            missing_format = [f"D    {dp}" for dp in missing_dirs]
-            missing_format.extend((f"F    {fp}" for fp in sorted(missing_files)))
+                  "and files (F) without checksum (paths are relative to path specified on "
+                  "command line):")
+            # convert to relative paths here
+            missing_format = [f"D    {os.path.relpath(dp, start=self.root_dir)}"
+                              for dp in missing_dirs]
+            missing_format.extend((f"F    {os.path.relpath(fp, start=self.root_dir)}"
+                                   for fp in sorted(missing_files)))
             print("\n".join(missing_format))
 
 
@@ -468,7 +465,8 @@ class HashFile:
         # store location of file (or use filename to build loc)
         # so we can build the path to files from root_dir correctly
         # from path in hash file
-        self.hash_file_dir, self.filename = os.path.split(path_to_hash_file)
+        # make sure we get an absolute path
+        self.hash_file_dir, self.filename = os.path.split(os.path.abspath(path_to_hash_file))
         # i dont thik ill ever need this
         # self.hash_filename_dict = {}
         self.filename_hash_dict = {}
@@ -549,7 +547,8 @@ class HashFile:
                 logger.warning("Invalid line in hash file: %s", self.get_path())
                 continue
 
-            # alert on abspath in file
+            # alert on abspath in file; we use abspath internally but only write
+            # relative paths to file
             if os.path.isabs(file_path):
                 if not warned_abspath:
                     logger.warning("Found absolute path in hash file: %s", self.get_path())
@@ -564,11 +563,15 @@ class HashFile:
 
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
-            self.filename_hash_dict[os.path.normpath(file_path)] = hash_str
+            abs_normed_path = os.path.join(self.hash_file_dir, os.path.normpath(file_path))
+            self.filename_hash_dict[abs_normed_path] = hash_str
 
     def write(self):
-        if cli_yes_no(f"Do you want to write {self.filename}?"):
-            hashfile_str = build_hashfile_str(*self.filename_hash_dict.items())
+        if cli_yes_no(f"Do you want to write {self.get_path()}?"):
+            # convert absolute paths to paths that are relative to the hash file location
+            abs_filename_hash_dict = {os.path.relpath(fp, start=self.hash_file_dir): hash_str
+                                      for fp, hash_str in self.filename_hash_dict.items()}
+            hashfile_str = build_hashfile_str(*abs_filename_hash_dict.items())
             # TotalCommander needs UTF-8 BOM for checksum files so use UTF-8-SIG
             with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
                 w.write(hashfile_str)
@@ -576,28 +579,21 @@ class HashFile:
         return False
 
     def copy_to(self, mv_path):
-        abspath = os.path.abspath(self.get_path())
-        # differentiate between mv_path being rel or abspath
         # error when trying to move to diff drive
         if os.path.isabs(mv_path) and (
-                os.path.splitdrive(abspath)[0] != os.path.splitdrive(mv_path)):
+                os.path.splitdrive(self.hash_file_dir)[0] != os.path.splitdrive(mv_path)):
             logger.error("Can't move hash file to a different drive than the files it holds "
                          "hashes for!")
             return None
         # need to check that we dont get None from move_fpath
-        new_moved_path = move_fpath(abspath, mv_path)
+        new_moved_path = move_fpath(self.get_path(), mv_path)
         if new_moved_path is None:
             logger.error("Couldn't move file due to a faulty move path!")
             return None
         new_hash_file_dir, new_filename = os.path.split(new_moved_path)
 
-        # convert all relpaths in filename_hash_dict to absolute
-        # and convert to relative path starting from new_abspath
-        self.filename_hash_dict = {os.path.relpath(
-                            os.path.abspath(p),
-                            start=new_hash_file_dir): hash_str for p, hash_str
-                                  in self.filename_hash_dict.items()}
-
+        # we dont need to modify our file paths in self.filename_hash_dict since
+        # we're using absolute paths anyway
         self.hash_file_dir, self.filename = new_hash_file_dir, new_filename
         if self.write():
             logger.info("Copied hash file to %s", os.path.join(new_hash_file_dir, new_filename))
@@ -610,8 +606,7 @@ class HashFile:
 
     def filter_deleted_files(self):
         self.filename_hash_dict = {fname: hash_str for fname, hash_str
-                                   in self.filename_hash_dict.items() if os.path.isfile(
-                                       os.path.join(self.hash_file_dir, fname))}
+                                   in self.filename_hash_dict.items() if os.path.isfile(fname)}
 
     def verify(self, whitelist=None):
         crc_errors = []
@@ -622,21 +617,26 @@ class HashFile:
             return crc_errors, missing, matches
 
         for fpath, expected_hash in self.filename_hash_dict.items():
+            # relative path for reporting and whitelisting
+            # use replace instead of os.path.relpath since the latter is way slower
+            # replace: 0.0263266 relpath: 2.5808342 in timeit with number=100
+            # and working on a list of 500 paths per execution
+            rel_fpath = fpath.replace(self.hash_file_dir + os.sep, "", 1)
             if whitelist:
                 # skip file if we have a whitelist and there's no match
-                if not any(wildcard_match(pattern, fpath) for pattern in whitelist):
+                if not any(wildcard_match(pattern, rel_fpath) for pattern in whitelist):
                     continue
 
             current = gen_hash_from_file(fpath, self.hash_type)
             if current is None:
-                missing.append(fpath)
-                logger.warning("%s: MISSING", fpath)
+                missing.append(rel_fpath)
+                logger.warning("%s: MISSING", rel_fpath)
             elif expected_hash == current:
                 matches += 1
-                logger.info("%s: OK", fpath)
+                logger.info("%s: OK", rel_fpath)
             else:
-                crc_errors.append(fpath)
-                logger.warning("%s: FAILED", fpath)
+                crc_errors.append(rel_fpath)
+                logger.warning("%s: FAILED", rel_fpath)
 
         hf_path = os.path.join(self.hash_file_dir, self.filename)
         if matches and not crc_errors and not missing:
@@ -656,6 +656,7 @@ class HashFile:
 class MixedAlgoHashCollection:
     def __init__(self, handling_checksumhelper):
         self.handling_checksumhelper = handling_checksumhelper
+        self.root_dir = self.handling_checksumhelper.root_dir
         self.filename_hash_dict = {}
 
     def __contains__(self, file_path):
@@ -721,21 +722,26 @@ class MixedAlgoHashCollection:
             return crc_errors, missing, matches
 
         for fpath, (expected_hash, hash_algo) in self.filename_hash_dict.items():
+            # relative path for reporting and whitelisting
+            # use replace instead of os.path.relpath since the latter is way slower
+            # replace: 0.0263266 relpath: 2.5808342 in timeit with number=100
+            # and working on a list of 500 paths per execution
+            rel_fpath = fpath.replace(self.root_dir + os.sep, "", 1)
             if whitelist:
                 # skip file if we have a whitelist and there's no match
-                if not any(wildcard_match(pattern, fpath) for pattern in whitelist):
+                if not any(wildcard_match(pattern, rel_fpath) for pattern in whitelist):
                     continue
 
             current = gen_hash_from_file(fpath, hash_algo)
             if current is None:
-                missing.append(fpath)
-                logger.warning("%s: MISSING", fpath)
+                missing.append(rel_fpath)
+                logger.warning("%s: MISSING", rel_fpath)
             elif expected_hash == current:
                 matches += 1
-                logger.info("%s: %s OK", fpath, hash_algo.upper())
+                logger.info("%s: %s OK", rel_fpath, hash_algo.upper())
             else:
-                crc_errors.append(fpath)
-                logger.warning("%s: %s FAILED", fpath, hash_algo.upper())
+                crc_errors.append(rel_fpath)
+                logger.warning("%s: %s FAILED", rel_fpath, hash_algo.upper())
 
         if matches and not crc_errors and not missing:
             logger.info("No missing files and all files matching their hashes")
@@ -781,7 +787,7 @@ def _cl_build_most_current(args):
     c.build_most_current()
     if isinstance(c.hash_file_most_current, MixedAlgoHashCollection):
         c.hash_file_most_current = c.hash_file_most_current.to_single_hash_file(
-                                   f"{c.root_dir_name}_most_current_"
+                                   f"{c.root_dir}\\{c.root_dir_name}_most_current_"
                                    f"{time.strftime('%Y-%m-%d')}.{args.hash_algorithm}",
                                    args.hash_algorithm)
     if args.filter_deleted:
@@ -792,10 +798,6 @@ def _cl_build_most_current(args):
 def _cl_copy(args):
     h = HashFile(None, args.source_path)
     h.read()
-    # @Hack change cwd so relative paths in hash file can be correctly converted to
-    # abspath using os.path.abspath (which uses cwd as starting point)
-    # dirname returns '' if its just a filename
-    os.chdir(os.path.dirname(args.source_path) if os.path.dirname(args.source_path) else '.')
     h.copy_to(args.dest_path)
     return h
 
@@ -811,18 +813,10 @@ def _cl_verify_all(args):
 
 
 def _cl_verify_hfile(args):
-    # remember starting cwd since we need to change cwd to verify hash files
-    # but the paths of additional hash files wont be valid anymore so we have to change
-    # it back or con
-    starting_cwd = os.getcwd()
     for hash_file in args.hash_file_name:
         h = HashFile(None, hash_file)
         h.read()
-        # @Hack change cwd so relative paths in hash file are valid
-        # dirname returns '' if its just a filename
-        os.chdir(os.path.dirname(hash_file) if os.path.dirname(hash_file) else '.')
         h.verify()
-        os.chdir(starting_cwd)
 
 
 def _cl_verify_filter(args):

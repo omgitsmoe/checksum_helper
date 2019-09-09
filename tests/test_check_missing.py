@@ -1,22 +1,20 @@
 import os
 import shutil
-import pytest
-import time
 
-from utils import TESTS_DIR, read_file, write_file_str
+from utils import TESTS_DIR
 from checksum_helper import ChecksumHelper
 
 
 def test_check_missing(capsys):
-    os.chdir(TESTS_DIR)
-    shutil.copy2("test_check_missing_files/missing.sha512", "test_check_missing_files/tt/")
+    root_dir = os.path.join(TESTS_DIR, "test_check_missing_files")
+    # empty string at the end so 2nd param ends up as path/ or path\\ -> dir
+    shutil.copy2(os.path.join(root_dir, "missing.sha512"), os.path.join(root_dir, "tt", ""))
 
-    # ChecksumHelper sets cwd to first param
-    checksum_hlpr = ChecksumHelper("test_check_missing_files/tt", hash_filename_filter=())
+    checksum_hlpr = ChecksumHelper(os.path.join(root_dir, "tt"), hash_filename_filter=())
 
     # assert that last test didnt leave a compl.sha512 behind
     try:
-        os.remove("compl.sha512")
+        os.remove(os.path.join(root_dir, "tt", "compl.sha512"))
     except FileNotFoundError:
         pass
 
@@ -24,17 +22,18 @@ def test_check_missing(capsys):
 
     missing = ["D    sub4", "D    sub3\\sub1", "D    sub3\\sub2", "F    new 2.txt",
                "F    sub1\\sub2\\new 2.txt", "F    missing.sha512"]
+    # CAREFUL using print here for print-debugging will lead to the ouput being captured
+    # by capsys.readouterr() and thus messing with the test
     # get stdout
     missing_found = capsys.readouterr().out
     missing_found = missing_found.strip().splitlines()[2:]
 
     assert sorted(missing) == sorted(missing_found)
 
-    os.remove("missing.sha512")
+    os.remove(os.path.join(root_dir, "tt", "missing.sha512"))
 
-    os.chdir(TESTS_DIR)
-    shutil.copy2("test_check_missing_files/compl.sha512", "test_check_missing_files/tt/")
-    checksum_hlpr = ChecksumHelper("test_check_missing_files/tt", hash_filename_filter=())
+    shutil.copy2(os.path.join(root_dir, "compl.sha512"), os.path.join(root_dir, "tt", ""))
+    checksum_hlpr = ChecksumHelper(os.path.join(root_dir, "tt"), hash_filename_filter=())
     checksum_hlpr.check_missing_files()
 
     # get stdout
@@ -43,4 +42,4 @@ def test_check_missing(capsys):
 
     assert ["F    compl.sha512"] == missing_found
 
-    os.remove("compl.sha512")
+    os.remove(os.path.join(root_dir, "tt", "compl.sha512"))

@@ -15,14 +15,13 @@ from checksum_helper import ChecksumHelper
 def setup_dir_to_checksum(request, setup_tmpdir_param):
     tmpdir = setup_tmpdir_param
     root_dir = os.path.join(tmpdir, "tt")
-    #import pdb; pdb.set_trace()
     # use "" as last join to make sure tmpdir_failed_md5 ends in os.sep so it gets treated as
     # dir path and not as file path
     # When using copytree, you need to ensure that src exists and dst does not exist.
     # Even if the top level directory contains nothing, copytree won't work because it
     # expects nothing to be at dst and will create the top level directory itself.
     shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "tt"),
-                    os.path.join(root_dir))
+                    os.path.join(root_dir, ""))
 
     filter_str, include_unchanged = request.param
     checksume_hlpr = ChecksumHelper(root_dir, hash_filename_filter=filter_str)
@@ -35,6 +34,7 @@ def setup_dir_to_checksum(request, setup_tmpdir_param):
 
 def test_do_incremental(setup_dir_to_checksum, monkeypatch):
     checksume_hlpr, include_unchanged, root_dir = setup_dir_to_checksum
+    assert os.path.isabs(checksume_hlpr.root_dir)
     # monkeypatch the "input" function, so that it returns "0,2".
     # This simulates the user entering "y" in the terminal:
     monkeypatch.setattr('builtins.input', lambda x: "y")
