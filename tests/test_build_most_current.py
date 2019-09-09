@@ -18,7 +18,7 @@ def setup_dir_to_checksum(setup_tmpdir_param):
 
 @pytest.mark.parametrize("hash_fn_filter,search_depth,filter_deleted,verified_sha_name", [
     ((), 0, False, "most_current.sha512"),
-    (("md5",), -1, True, "most_current_md5_filtered.sha512"),
+    (("*.md5",), -1, True, "most_current_md5_filtered.sha512"),
     ((), -1, True, "most_current.sha512"),
     ((), -1, False, "most_current_fd.sha512"),
 ])

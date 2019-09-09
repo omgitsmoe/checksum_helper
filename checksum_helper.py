@@ -208,12 +208,13 @@ def build_hashfile_str(*filename_hash_pairs):
 
 HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
 # forgot the comma again for single value tuple!!!!!!
-DIR_SUBSTR_EXCLUDE = (".git",)
+# dirs starting with a substring in the tuple below will not be searched for hash files
+DIR_START_STR_EXCLUDE = (".git",)
 
 
-def discover_hash_files(start_path, depth=2, exclude_str_filename=None):
-    if exclude_str_filename is None:
-        exclude_str_filename = ()
+def discover_hash_files(start_path, depth=2, exclude_pattern=None):
+    if exclude_pattern is None:
+        exclude_pattern = ()
 
     # os.walk invokes os.path.join to build the 'top' directory name on each iteration; the count
     # of path separators (that is, os.sep) in each directory name is related to its depth. Just
@@ -234,16 +235,21 @@ def discover_hash_files(start_path, depth=2, exclude_str_filename=None):
             # When topdown is true, the caller can modify the dirnames list in-place (e.g., via del
             # or slice assignment), and walk will only recurse into the subdirectories whose names
             # remain in dirnames; this can be used to prune the search...
-            dirnames[:] = [d for d in dirnames if not any(ss in d for ss in DIR_SUBSTR_EXCLUDE)]
+            dirnames[:] = [d for d in dirnames if not any(d.startswith(s)
+                           for s in DIR_START_STR_EXCLUDE)]
 
         for fname in fnames:
             try:
                 name, ext = fname.rsplit(".", 1)
+                rel_fp = os.path.join(dirpath, fname).replace(start_path + os.sep, '', 1)
             except ValueError:
                 # no file extentsion
                 continue
-            if ext in HASH_FILE_EXTENSIONS and all(
-                    (s not in name for s in exclude_str_filename)):
+            # no exclude patterns -> append files with supported hash file extensions
+            # exclude patterns -> supported extension and not matching any of the exclude patterns
+            if ((not exclude_pattern and (ext in HASH_FILE_EXTENSIONS)) or 
+                    (ext in HASH_FILE_EXTENSIONS and not any(
+                        wildcard_match(pat, rel_fp) for pat in exclude_pattern))):
                 hashfiles.append(os.path.join(dirpath, fname))
 
     return hashfiles
@@ -269,23 +275,17 @@ class ChecksumHelper:
         else:
             self.hash_filename_filter = hash_filename_filter
 
-        # NEVER include "" in hashname filter since: "" in "some_string" is always True
-        # (use self.hash_filename_filter here since we might have converted it to a tuple)
-        if "" in self.hash_filename_filter:
-            logger.warning("Empty string ("") was included in hash_filename_filter "
-                           "this means that all hash files will be filtered out!!")
-
         self.options = {
-                "include_unchanged_files_incremental": True,
-                "discover_hash_files_depth": -1,
-				"filename_filter": ["!*.log"],
-                "directory_filter": ["!__pycache__"],
+            "include_unchanged_files_incremental": True,
+            "discover_hash_files_depth": -1,
+            "filename_filter": ["!*.log"],
+            "directory_filter": ["!__pycache__"],
         }
 
     def discover_hash_files(self):
         hash_files = discover_hash_files(self.root_dir,
                                          depth=self.options["discover_hash_files_depth"],
-                                         exclude_str_filename=self.hash_filename_filter)
+                                         exclude_pattern=self.hash_filename_filter)
         self.all_hash_files = [HashFile(self, hfile_path) for hfile_path in hash_files]
 
     def read_all_hash_files(self):
@@ -329,11 +329,14 @@ class ChecksumHelper:
                 else:
                     self.hash_file_most_current.set_hash_for_file(hash_type, combined_path, hash_str)
 
-    def do_incremental_checksums(self, algo_name):
+    def do_incremental_checksums(self, algo_name, whitelist=None, blacklist=None):
         """
         Creates checksums for all changed files (that dont match checksums in
         hash_file_most_current)
         """
+        if whitelist is not None and blacklist is not None:
+            logger.error("Can only use either a whitelist or blacklist - not both!")
+            return None
         if not self.hash_file_most_current:
             self.build_most_current()
 
@@ -343,12 +346,22 @@ class ChecksumHelper:
 
         for dirpath, dirnames, fnames in os.walk(self.root_dir):
             for fname in fnames:
+                file_path = os.path.join(dirpath, fname)
+                rel_fpath = file_path.replace(self.root_dir + os.sep, '', 1)
                 # exclude own logs
                 if fname == LOG_BASENAME or (
                         fname.startswith(LOG_BASENAME + '.') and
                         fname.split(LOG_BASENAME + '.', 1)[1].isdigit()):
                     continue
-                file_path = os.path.join(dirpath, fname)
+                elif whitelist and not any(wildcard_match(pat, rel_fpath) for pat in whitelist):
+                    # if we have a whitelist only include files that match one of the whitelist
+                    # patterns
+                    continue
+                elif blacklist and any(wildcard_match(pat, rel_fpath) for pat in blacklist):
+                    # if we have a blacklist only include files that dont match one of the
+                    # blacklisted patterns
+                    continue
+
                 new_hash, include = self._build_verfiy_hash(file_path, algo_name)
                 if include:
                     # NOTE(moe): generating the dict here would be faster instead of using
@@ -777,7 +790,8 @@ def _cl_incremental(args):
                        hash_filename_filter=args.hash_filename_filter)
     c.options["include_unchanged_files_incremental"] = False if args.filter_unchanged else True
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
-    c.do_incremental_checksums(args.hash_algorithm)
+    c.do_incremental_checksums(args.hash_algorithm, whitelist=args.whitelist,
+                               blacklist=args.blacklist)
 
 
 def _cl_build_most_current(args):
@@ -847,31 +861,32 @@ if __name__ == "__main__":
     # all subcmd parsers will have options added here (as long as they have this parser as
     # parent)
     # metavar is name used placeholder in help text
-    parent_parser.add_argument("-hf", "--hash-filename-filter", nargs="+", metavar="SUBSTRING",
-                               help=("Substrings in filenames of hashfiles to exclude "
-                                     "from search"),
+    parent_parser.add_argument("-hf", "--hash-filename-filter", nargs="+", metavar="PATTERN",
+                               help="Wildcard pattern for hash filenames that will be excluded "
+                                    "from search",
                                type=str)
     parent_parser.add_argument("-d", "--discover-hash-files-depth", default=-1, type=int,
                                help="Number of subdirs to descend down to search for hash files; "
-                                    "0 -> root dir only, -1 -> max depth; Default: -1")
+                                    "0 -> root dir only, -1 -> max depth; Default: -1",
+                               metavar="DEPTH")
 
     incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser],
                                         help="Discover hash files in subdirectories and verify"
                                              " found hashes and creating new hashes for new "
                                              "files! (So not truly incremental). New hashes "
                                              "(or all) will be written to file!")
-    incremental.add_argument("hash_algorithm", type=str)
     incremental.add_argument("path", type=str)
+    incremental.add_argument("hash_algorithm", type=str)
     incremental.add_argument("-fu", "--filter-unchanged", action="store_false",
                              help="Dont include the checksum of unchanged files in the output")
-    incremental.add_argument("-ff", "--filename-filter", nargs="+",
-                             help=("Filename pattern matching of files to be hashed; "
-                                   "Negate with '!pattern'"),
-                             type=str)
-    incremental.add_argument("-df", "--directoy-filter", nargs="+",
-                             help=("Directory name pattern matching of directories containing"
-                                   "files to be hashed; Negate with '!pattern'"),
-                             type=str)
+    # only either white or blacklist can be used at the same time - not both
+    inc_wl_or_bl = incremental.add_mutually_exclusive_group()
+    inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
+                              help="Only file paths matching one of the wildcard patterns "
+                                   "will be hashed", type=str)
+    inc_wl_or_bl.add_argument("-bl", "--blacklist", nargs="+", metavar='PATTERN', default=None,
+                              help="Wildcard patterns matching file paths to exclude from hasing",
+                              type=str)
     # set func to call when subcommand is used
     incremental.set_defaults(func=_cl_incremental)
 

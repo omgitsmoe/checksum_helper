@@ -166,7 +166,7 @@ def test_verify_all(caplog):
     root_dir = test_verify_root
     # hash_filename_filter literally only filters out the hashfile if a str of
     # hash_filename_filter is in the name of the file without the extension
-    a = Args(root_dir=[root_dir], discover_hash_files_depth=-1, hash_filename_filter=("new 2",))
+    a = Args(root_dir=[root_dir], discover_hash_files_depth=-1, hash_filename_filter=("*.md5",))
 
     caplog.clear()
     _cl_verify_all(a)
@@ -245,7 +245,7 @@ def test_verify_filter(caplog):
     root_dir = test_verify_root
     # hash_filename_filter literally only filters out the hashfile if a str of
     # hash_filename_filter is in the name of the file without the extension
-    a = Args(root_dir=root_dir, discover_hash_files_depth=-1, hash_filename_filter=("new 2",),
+    a = Args(root_dir=root_dir, discover_hash_files_depth=-1, hash_filename_filter=("*.md5",),
              filter=[
                  r"",
                  r"sub?\*",
@@ -276,7 +276,7 @@ def test_verify_filter(caplog):
     root_dir = test_verify_root
     # hash_filename_filter literally only filters out the hashfile if a str of
     # hash_filename_filter is in the name of the file without the extension
-    a = Args(root_dir=root_dir, discover_hash_files_depth=-1, hash_filename_filter=("new 2",),
+    a = Args(root_dir=root_dir, discover_hash_files_depth=-1, hash_filename_filter=("*.md5",),
              filter=[
                  r"*new* ?.txt",
                     ])
