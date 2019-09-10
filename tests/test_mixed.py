@@ -5,7 +5,7 @@ import pytest
 
 from utils import TESTS_DIR, setup_tmpdir_param, Args
 
-from checksum_helper import split_path, move_fpath, HashFile, gen_hash_from_file, ChecksumHelper, AbspathDrivesDontMatch, _cl_copy
+from checksum_helper import split_path, move_fpath, HashFile, gen_hash_from_file, ChecksumHelper, AbspathDrivesDontMatch, _cl_copy, discover_hash_files
 
 
 @pytest.mark.parametrize(
@@ -169,3 +169,112 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
     assert caplog.record_tuples == [
         ('Checksum_Helper', logging.WARNING, r'Found absolute path in hash file: {}\crash.sha512'.format(os.path.join(TESTS_DIR, "test_abspath_warn_files"))),
     ]
+
+
+@pytest.mark.parametrize(
+        "depth, exclude, expected",
+        [
+            (-1, None, (
+                r"HDDCol_2019-07-12.sha256",
+                r"infodump_2019-04-06.sha512",
+                r"picsonly-2016-08-23.md5",
+                r"sub1\Important Backups-2016-08-21.sha512",
+                r"sub1\Important Backups-2017-12-18.md5",
+                r"sub1\Important Backups-2018-07-02.sha512",
+                r"sub1\sub2\backup_2019-07-20.sha512",
+                r"sub1\sub2\backup_most_current_2019-07-19.sha512",
+                r"sub1\sub2\backup-add-2019-07-20.sha256",
+                r"sub2\catalog-2016-05-04.sha512",
+                r"sub2\catalog-2017-10-28.sha512",
+                r"sub2\sub1\picsonly-2015-11-18.sha512",
+                r"sub2\sub1\picsonly-2016-05-04.sha512",
+                r"sub3\Important Backups-2016-07-09.sha512",
+                r"sub3\Important Backups-2017-07-24.sha512",
+                r"sub3\Important Backups-2018-03-11.sha512",
+                r"sub3\sub1\ebook-2016-jan.sha512",
+                r"sub3\sub2\ebook-2016-05.sha512",
+                r"sub3\sub2\ebooks-2017-12.md5",
+                r"sub4\em-v2bgufjgpki0315.crc",
+                r"sub4\sub1\backup-moved-2019-07-19.sha512",
+                r"thumbs.sha512",
+                )
+        ),
+            (0, None, (
+                r"HDDCol_2019-07-12.sha256",
+                r"infodump_2019-04-06.sha512",
+                r"picsonly-2016-08-23.md5",
+                r"thumbs.sha512",
+                )
+        ),
+            (1, None, (
+                r"HDDCol_2019-07-12.sha256",
+                r"infodump_2019-04-06.sha512",
+                r"picsonly-2016-08-23.md5",
+                r"sub1\Important Backups-2016-08-21.sha512",
+                r"sub1\Important Backups-2017-12-18.md5",
+                r"sub1\Important Backups-2018-07-02.sha512",
+                r"sub2\catalog-2016-05-04.sha512",
+                r"sub2\catalog-2017-10-28.sha512",
+                r"sub3\Important Backups-2016-07-09.sha512",
+                r"sub3\Important Backups-2017-07-24.sha512",
+                r"sub3\Important Backups-2018-03-11.sha512",
+                r"sub4\em-v2bgufjgpki0315.crc",
+                r"thumbs.sha512",
+                )
+        ),
+            (-1, ("*2016*",), (
+                r"HDDCol_2019-07-12.sha256",
+                r"infodump_2019-04-06.sha512",
+                r"sub1\Important Backups-2017-12-18.md5",
+                r"sub1\Important Backups-2018-07-02.sha512",
+                r"sub1\sub2\backup_2019-07-20.sha512",
+                r"sub1\sub2\backup_most_current_2019-07-19.sha512",
+                r"sub1\sub2\backup-add-2019-07-20.sha256",
+                r"sub2\catalog-2017-10-28.sha512",
+                r"sub2\sub1\picsonly-2015-11-18.sha512",
+                r"sub3\Important Backups-2017-07-24.sha512",
+                r"sub3\Important Backups-2018-03-11.sha512",
+                r"sub3\sub2\ebooks-2017-12.md5",
+                r"sub4\em-v2bgufjgpki0315.crc",
+                r"sub4\sub1\backup-moved-2019-07-19.sha512",
+                r"thumbs.sha512",
+                )
+        ),
+            (-1, ("*.sha256", "*?ackup*"), (
+                r"infodump_2019-04-06.sha512",
+                r"picsonly-2016-08-23.md5",
+                r"sub2\catalog-2016-05-04.sha512",
+                r"sub2\catalog-2017-10-28.sha512",
+                r"sub2\sub1\picsonly-2015-11-18.sha512",
+                r"sub2\sub1\picsonly-2016-05-04.sha512",
+                r"sub3\sub1\ebook-2016-jan.sha512",
+                r"sub3\sub2\ebook-2016-05.sha512",
+                r"sub3\sub2\ebooks-2017-12.md5",
+                r"sub4\em-v2bgufjgpki0315.crc",
+                r"thumbs.sha512",
+                )
+        ),
+            (-1, ("sub1\*", "thumbs.sha512"), (
+                r"HDDCol_2019-07-12.sha256",
+                r"infodump_2019-04-06.sha512",
+                r"picsonly-2016-08-23.md5",
+                r"sub2\catalog-2016-05-04.sha512",
+                r"sub2\catalog-2017-10-28.sha512",
+                r"sub2\sub1\picsonly-2015-11-18.sha512",
+                r"sub2\sub1\picsonly-2016-05-04.sha512",
+                r"sub3\Important Backups-2016-07-09.sha512",
+                r"sub3\Important Backups-2017-07-24.sha512",
+                r"sub3\Important Backups-2018-03-11.sha512",
+                r"sub3\sub1\ebook-2016-jan.sha512",
+                r"sub3\sub2\ebook-2016-05.sha512",
+                r"sub3\sub2\ebooks-2017-12.md5",
+                r"sub4\em-v2bgufjgpki0315.crc",
+                r"sub4\sub1\backup-moved-2019-07-19.sha512",
+                )
+        ),
+        ]
+    )
+def test_discover_hashfiles(depth, exclude, expected):
+    root_dir = os.path.join(TESTS_DIR, "test_mixed_files", "discover")
+    assert sorted(discover_hash_files(root_dir, depth, exclude_pattern=exclude)) == sorted([
+            os.path.join(root_dir, p.replace('\\', os.sep)) for p in expected])

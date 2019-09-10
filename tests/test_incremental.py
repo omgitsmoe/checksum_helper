@@ -1,10 +1,11 @@
 import os
 import shutil
 import pytest
+import logging
 import time
 
-from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str
-from checksum_helper import ChecksumHelper
+from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args
+from checksum_helper import ChecksumHelper, _cl_incremental
 
 
 #                       filter, include unchanged
@@ -35,7 +36,6 @@ def setup_dir_to_checksum(request, setup_tmpdir_param):
 def test_do_incremental(setup_dir_to_checksum, monkeypatch):
     checksume_hlpr, include_unchanged, root_dir = setup_dir_to_checksum
     assert os.path.isabs(checksume_hlpr.root_dir)
-    # monkeypatch the "input" function, so that it returns "0,2".
     # This simulates the user entering "y" in the terminal:
     monkeypatch.setattr('builtins.input', lambda x: "y")
 
@@ -54,3 +54,67 @@ def test_do_incremental(setup_dir_to_checksum, monkeypatch):
     generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
 
     assert(verified_sha_contents == generated_sha_contents)
+
+
+@pytest.mark.parametrize(
+        "depth, hash_fn_filter, include_unchanged, whitelist, blacklist, verified_sha_name",
+        [
+            (-1, None, False, ("err",), ("err",), None),
+            (-1, None, False, (), (), "wl_bl.sha512"),
+            (1, None, False, (), (), "wl_bl_wo-pre.sha512"),
+            # filtered pre existing hash file
+            (-1, ("*pre.sha512",), False, (), (), "wl_bl.sha512"),
+            # include unchanged
+            (-1, None, True, (), (), "wl_bl.sha512"),
+            (-1, None, False, (), (), "wl_bl_wo-pre.sha512"),
+            # blacklist: no desktop.ini, Thumbs.db or *.log
+            (-1, None, True, (), ("desktop.ini", "Thumbs.db", "*.log"),
+             "wl_bl_no-desk-log-thumbs_only-txt-jpg.sha512"),
+            # whitelist: only txt and jpg
+            (-1, None, True, ("*.txt", "*.jpg"), (),
+             "wl_bl_no-desk-log-thumbs_only-txt-jpg.sha512"),
+            # same without including unchanged or lower depth
+            # blacklist: no desktop.ini, Thumbs.db or *.log
+            (-1, None, False, (), ("desktop.ini", "Thumbs.db", "*.log"),
+             "wl_bl_no-desk-log-thumbs_only-txt-jpg_wo-pre.sha512"),
+            # whitelist: only txt and jpg
+            (1, None, True, ("*.txt", "*.jpg"), (),
+             "wl_bl_no-desk-log-thumbs_only-txt-jpg_wo-pre.sha512"),
+            # blacklist: no txt
+            (-1, None, False, (), ("*.txt",), "wl_bl_no-txt.sha512"),
+            # whitelist: only jpg
+            (-1, None, False, ("*.jpg",), (), "wl_bl_only-jpg.sha512"),
+            ])
+def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, blacklist,
+                          verified_sha_name, setup_tmpdir_param, caplog, monkeypatch):
+    tmpdir = setup_tmpdir_param
+    root_dir = os.path.join(tmpdir, "wl_bl")
+    # When using copytree, you need to ensure that src exists and dst does not exist.
+    # Even if the top level directory contains nothing, copytree won't work because it
+    # expects nothing to be at dst and will create the top level directory itself.
+    shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "wl_bl"),
+                    os.path.join(root_dir))
+    caplog.clear()
+    # caplog.set_level sets on root logger by default which is somehow not the logger setup by
+    # checksum_helper so specify our logger in the kw param
+    caplog.set_level(logging.WARNING, logger='Checksum_Helper')
+    monkeypatch.setattr('builtins.input', lambda x: "y")
+
+    a = Args(path=root_dir, hash_filename_filter=hash_fn_filter,
+             filter_unchanged=include_unchanged, discover_hash_files_depth=depth,
+             hash_algorithm="sha512", whitelist=whitelist, blacklist=blacklist)
+    _cl_incremental(a)
+    if whitelist is not None and blacklist is not None:
+        assert caplog.record_tuples == [
+            ('Checksum_Helper', logging.ERROR, 'Can only use either a whitelist or blacklist - not both!'),
+            ]
+    else:
+        verified_sha_contents = read_file(os.path.join(TESTS_DIR,
+                                                       "test_incremental_files",
+                                                       verified_sha_name))
+
+        # find written sha (current date is appended)
+        generated_sha_name = f"wl_bl_{time.strftime('%Y-%m-%d')}.sha512"
+        generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
+
+        assert(verified_sha_contents == generated_sha_contents)

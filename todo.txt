@@ -1,7 +1,3 @@
-- exclude files/dirs from checksumming or only instead of blacklisting only checksum whitelisted
-    - tests needed
-- use wildcards for hash file filter
-    - more tests needed
 - less logs?
 - report file for verifying ops
 - add cmd to move file and adjust relpaths in hash files?
