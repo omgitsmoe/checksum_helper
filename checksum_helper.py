@@ -817,20 +817,50 @@ def _cl_copy(args):
 
 
 def _cl_verify_all(args):
+    nr_crc_errors = 0
+    nr_missing = 0
+    nr_matches = 0
+    files_total = 0
     # verify all found hashes of discovered hash files for all supplied paths
     for root_p in args.root_dir:
         c = ChecksumHelper(root_p, hash_filename_filter=args.hash_filename_filter)
         c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
         c.build_most_current()
         # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
-        c.hash_file_most_current.verify()
+        crc_errors, missing, matches = c.hash_file_most_current.verify()
+        nr_crc_errors += len(crc_errors)
+        nr_missing += len(missing)
+        nr_matches += matches
+        files_total += len(c.hash_file_most_current.filename_hash_dict)
+    print("\nVerified folders: %s" % (", ".join(args.root_dir),))
+    print("    SUMMARY:")
+    print("    TOTAL FILES:", files_total)
+    print("    MATCHES:", nr_matches)
+    print("    CRC ERRORS:", nr_crc_errors)
+    print("    MISSING:", nr_missing)
+    return files_total, nr_matches, nr_missing, nr_crc_errors
 
 
 def _cl_verify_hfile(args):
+    nr_crc_errors = 0
+    nr_missing = 0
+    nr_matches = 0
+    files_total = 0
     for hash_file in args.hash_file_name:
         h = HashFile(None, hash_file)
         h.read()
-        h.verify()
+        crc_errors, missing, matches = h.verify()
+        nr_crc_errors += len(crc_errors)
+        nr_missing += len(missing)
+        nr_matches += matches
+        files_total += len(h.filename_hash_dict)
+    print("\nVerified hash files: %s" % (", ".join(args.hash_file_name),))
+    print("    SUMMARY:")
+    print("    TOTAL FILES:", files_total)
+    print("    MATCHES:", nr_matches)
+    print("    CRC ERRORS:", nr_crc_errors)
+    print("    MISSING:", nr_missing)
+    return files_total, nr_matches, nr_missing, nr_crc_errors
 
 
 def _cl_verify_filter(args):

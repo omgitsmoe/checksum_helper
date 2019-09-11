@@ -1,4 +1,2 @@
-- less logs?
-- report file for verifying ops
-- add cmd to move file and adjust relpaths in hash files?
+- add cmd to move/copy/del file and adjust relpaths in hash files?
     

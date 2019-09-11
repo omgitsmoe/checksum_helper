@@ -18,7 +18,8 @@ def test_verify_hfile(caplog):
     starting_cwd = os.getcwd()
 
     caplog.clear()
-    _cl_verify_hfile(a)
+    # files_total, nr_matches, nr_missing, nr_crc_errors
+    assert _cl_verify_hfile(a) == (3, 2, 0, 1)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
@@ -35,7 +36,7 @@ def test_verify_hfile(caplog):
     starting_cwd = os.getcwd()
 
     caplog.clear()
-    _cl_verify_hfile(a)
+    assert _cl_verify_hfile(a) == (3, 2, 1, 0)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
@@ -54,7 +55,7 @@ def test_verify_hfile(caplog):
     caplog.clear()
     # caplog.set_level sets on root logger by default which is somehow not the logger setup by
     # checksum_helper so specify our logger in the kw param
-    _cl_verify_hfile(a)
+    assert _cl_verify_hfile(a) == (3, 3, 0, 0)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
@@ -72,7 +73,7 @@ def test_verify_hfile(caplog):
     caplog.clear()
     # caplog.set_level sets on root logger by default which is somehow not the logger setup by
     # checksum_helper so specify our logger in the kw param
-    _cl_verify_hfile(a)
+    assert _cl_verify_hfile(a) == (11, 7, 2, 2)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
@@ -102,7 +103,8 @@ def test_verify_all(caplog):
     a = Args(root_dir=[root_dir], discover_hash_files_depth=1, hash_filename_filter=())
 
     caplog.clear()
-    _cl_verify_all(a)
+    # files_total, nr_matches, nr_missing, nr_crc_errors
+    assert _cl_verify_all(a) == (12, 8, 2, 2)
     assert caplog.record_tuples == [
         ('Checksum_Helper', logging.INFO, r'new 2.txt: MD5 OK'),
         ('Checksum_Helper', logging.WARNING, r'new 3.txt: SHA512 FAILED'),
@@ -125,7 +127,7 @@ def test_verify_all(caplog):
     a = Args(root_dir=[root_dir], discover_hash_files_depth=0, hash_filename_filter=())
 
     caplog.clear()
-    _cl_verify_all(a)
+    assert _cl_verify_all(a) == (4, 3, 1, 0)
     assert caplog.record_tuples == [
         ('Checksum_Helper', logging.INFO, r'new 2.txt: OK'),
         ('Checksum_Helper', logging.INFO, r'new 3.txt: OK'),
@@ -140,7 +142,7 @@ def test_verify_all(caplog):
     a = Args(root_dir=[root_dir], discover_hash_files_depth=-1, hash_filename_filter=())
 
     caplog.clear()
-    _cl_verify_all(a)
+    assert _cl_verify_all(a) == (16, 11, 3, 2)
     assert caplog.record_tuples == [
         ('Checksum_Helper', logging.INFO, r'new 2.txt: MD5 OK'),
         ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: SHA512 OK'),
@@ -169,7 +171,7 @@ def test_verify_all(caplog):
     a = Args(root_dir=[root_dir], discover_hash_files_depth=-1, hash_filename_filter=("*.md5",))
 
     caplog.clear()
-    _cl_verify_all(a)
+    assert _cl_verify_all(a) == (15, 10, 3, 2)
     assert caplog.record_tuples == [
         ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: OK'),
         ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: FAILED'),
