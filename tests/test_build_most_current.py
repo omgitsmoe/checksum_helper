@@ -38,3 +38,15 @@ def test_build_most_current(hash_fn_filter, search_depth, filter_deleted, verifi
     generated_sha_contents = read_file(generated_sha_name)
 
     assert(verified_sha_contents == generated_sha_contents)
+
+
+def test_all_paths_normpath():
+    root_dir = os.path.join(TESTS_DIR, "test_build_most_current_files", "normalized")
+
+    c = ChecksumHelper(root_dir, hash_filename_filter=None)
+    c.options["discover_hash_files_depth"] = -1
+    c.read_all_hash_files()
+    for hf in c.all_hash_files:
+        # make sure all paths are properly normalized so we dont have get sth like this:
+        # C://test//abc//123//..//.//file.txt
+        assert all(p == os.path.normpath(p) for p in hf.filename_hash_dict.keys())

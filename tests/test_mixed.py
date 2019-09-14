@@ -79,6 +79,9 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     # make sure hash_file_dir and filename were also updated
     assert hf.hash_file_dir == os.path.join(root_dir, "sub2")
     assert hf.filename == "tt_moved.sha512"
+    # make sure all paths are properly normalized so we dont have get sth like this:
+    # C://test//abc//123//..//.//file.txt
+    assert all(p == os.path.normpath(p) for p in hf.filename_hash_dict.keys())
     # verifying the paths and hash strings are still correct by directly looping over
     # the filename_hash_dict
     for fpath, hash_str in hf.filename_hash_dict.items():
@@ -92,6 +95,9 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     # make sure hash_file_dir and filename were also updated
     assert hf.hash_file_dir == os.path.join(root_dir, "sub1", "sub2")
     assert hf.filename == "tt_moved2.sha512"
+    # make sure all paths are properly normalized so we dont have get sth like this:
+    # C://test//abc//123//..//.//file.txt
+    assert all(p == os.path.normpath(p) for p in hf.filename_hash_dict.keys())
     # verifying the paths and hash strings are still correct by directly looping over
     # the filename_hash_dict
     for fpath, hash_str in hf.filename_hash_dict.items():
@@ -105,6 +111,9 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     # make sure hash_file_dir and filename were also updated
     assert hf.hash_file_dir == os.path.join(root_dir, "sub1")
     assert hf.filename == "tt_moved3.sha512"
+    # make sure all paths are properly normalized so we dont have get sth like this:
+    # C://test//abc//123//..//.//file.txt
+    assert all(p == os.path.normpath(p) for p in hf.filename_hash_dict.keys())
     # verifying the paths and hash strings are still correct by directly looping over
     # the filename_hash_dict
     for fpath, hash_str in hf.filename_hash_dict.items():

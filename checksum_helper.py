@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import time
 import hashlib
 import logging
@@ -136,7 +137,7 @@ def move_fpath(abspath, mv_path):
     """
     C:\\test1\\test2\\test.txt, ..\\test3\\ -> C:\\test1\\test3\\test.txt
     C:\\test1\\test2\\test.txt, ..\\test3\\test_mv.txt -> C:\\test1\\test3\\test_mv.txt
-    Assumes mv_path ending in a separator(/ or \) is a folder the file should be moved to
+    Assumes mv_path ending in a separator(/ or \\) is a folder the file should be moved to
     otherwise the path is assumed to be a file path
     e.g. ./test/test2.txt -> file path, ./test/test2 or ./test/test2/ -> dir path
     :param abspath: Absolute path to the file
@@ -203,7 +204,9 @@ def build_hashfile_str(*filename_hash_pairs):
     for hash_fname, hash_str in filename_hash_pairs:
         final_str_ln.append(f"{hash_str} *{hash_fname}")
 
-    return "\n".join(final_str_ln)
+    # end in newline since POSIX defines a line as: A sequence of zero or more
+    # non- <newline> characters plus a terminating <newline> character
+    return "\n".join(final_str_ln) + '\n'
 
 
 HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
@@ -471,6 +474,76 @@ class ChecksumHelper:
                                    for fp in sorted(missing_files)))
             print("\n".join(missing_format))
 
+    def move_files(self, source_path, mv_path):
+        if not self.hash_files_initialized():
+            self.read_all_hash_files()
+
+        # abspath basically just does join(os.getcwd(), path) if path isabs is False
+        source_path = (source_path if os.path.isabs(source_path)
+                       else os.path.join(self.root_dir, source_path))
+        source_path = os.path.normpath(source_path)
+        src_is_dir = os.path.isdir(source_path)
+        # os.path.exists also accepts absolute paths with .. and . in them
+        # >>> os.path.exists(r"N:\_archive\test\..\.\..\_archive")
+        # True
+        # can use normpath and a join to essentially do the same as move_fpath since it
+        # removes redundant separators and up-level refs:
+        # only works like that on dirs, on files we have to remove filename and then
+        # join and test if mv path ends in a filenam?
+        # >>> os.path.normpath(os.path.join(r"N:\_archive\test", r"..\.\..\_archive"))
+        # 'N:\\_archive'
+        # may change the meaning of a path that contains symbolic links
+        dest_path = mv_path if os.path.isabs(mv_path) else os.path.join(self.root_dir, mv_path)
+        dest_path = os.path.normpath(dest_path)
+        dest_exists = os.path.exists(dest_path)
+        dest_is_dir = False if not dest_exists else os.path.isdir(dest_path)
+        if dest_exists and not dest_is_dir:
+            logger.error("File %s already exists!", dest_path)
+            return None
+
+        # Recursively move a file or directory (src) to another location (dst)
+        # and return the destination.
+        # If the destination is an existing directory, then src is moved inside that
+        # directory. If the destination already exists but is not a directory, it may
+        # be overwritten depending on os.rename() semantics.
+        shutil.move(source_path, dest_path)
+
+        # if we move a dir to an existing dir we move the dir into the existing dir
+        # so we append the parent dir to dest
+        # src C:\test\dir dest C:\bla -> C:\bla\dir\*
+        if dest_exists and dest_is_dir and src_is_dir:
+            dest_path = os.path.join(dest_path, os.path.basename(source_path))
+
+        for hash_file in self.all_hash_files:
+            if src_is_dir:
+                moved_fn_hash_dict = {}
+                for fpath, hash_str in hash_file.filename_hash_dict.items():
+                    if fpath.startswith(source_path):
+                        # remove source_path from fpath and replace it with dest
+                        moved = fpath.replace(source_path, dest_path)
+                        moved_fn_hash_dict[moved] = hash_str
+                    else:
+                        moved_fn_hash_dict[fpath] = hash_str
+                # replace with new fn hash dict
+                hash_file.filename_hash_dict = moved_fn_hash_dict
+                hash_file.write(force=True)
+            else:
+                # save hash and del old path entry and replace it with new path
+                hash_str, _ = hash_file.get_hash_by_file_path(source_path)
+                # not present in hash_file
+                if hash_str is None:
+                    continue
+
+                del hash_file[source_path]
+                if dest_is_dir:
+                    # file moved INTO dir -> append filename to dest
+                    hash_file.set_hash_for_file(os.path.join(dest_path,
+                                                             os.path.basename(source_path)),
+                                                hash_str)
+                else:
+                    hash_file.set_hash_for_file(dest_path, hash_str)
+                hash_file.write(force=True)
+
 
 class HashFile:
     def __init__(self, handling_checksumhelper, path_to_hash_file):
@@ -497,13 +570,28 @@ class HashFile:
     def __len__(self):
         return len(self.filename_hash_dict)
 
+    def __delitem__(self, file_path):
+        """
+        Pass in file_path (normalized here using normpath) to delete hash from hash file
+
+        :param file_path: Absolute path to hashed file
+        :return: Tuple of hash in hex and name of used hash algorithm
+        """
+        try:
+            # filename_hash_dict uses normalized paths as keys
+            del self.filename_hash_dict[os.path.normpath(file_path)]
+        except KeyError:
+            return False
+        else:
+            return True
+
     def get_hash_by_file_path(self, file_path):
         """
         Pass in file_path (normalized here using normpath) to get stored hash for
         that path
         KeyError -> None
 
-        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
+        :param file_path: Absolute path to hashed file
         :return: Tuple of hash in hex and name of used hash algorithm
         """
         # filename_hash_dict uses normalized paths as keys
@@ -517,7 +605,7 @@ class HashFile:
         """
         Sets hash value in HashFile for specified file_path
 
-        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
+        :param file_path: Absolute path to hashed file
                           gets normalized here
         :param hash_str:  Hex-string representation of file hash
         """
@@ -567,7 +655,7 @@ class HashFile:
                     logger.warning("Found absolute path in hash file: %s", self.get_path())
                     warned_abspath = True
                 # if drive letters dont match abort and let user handle this manually
-                if (os.path.splitdrive(os.path.abspath(self.get_path()))[0] !=
+                if (os.path.splitdrive(self.get_path())[0] !=
                         os.path.splitdrive(file_path)[0]):
                     raise AbspathDrivesDontMatch(
                             "Drive letters of the hash file "
@@ -576,11 +664,11 @@ class HashFile:
 
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
-            abs_normed_path = os.path.join(self.hash_file_dir, os.path.normpath(file_path))
+            abs_normed_path = os.path.normpath(os.path.join(self.hash_file_dir, file_path))
             self.filename_hash_dict[abs_normed_path] = hash_str
 
-    def write(self):
-        if cli_yes_no(f"Do you want to write {self.get_path()}?"):
+    def write(self, force=False):
+        if force or cli_yes_no(f"Do you want to write {self.get_path()}?"):
             # convert absolute paths to paths that are relative to the hash file location
             abs_filename_hash_dict = {os.path.relpath(fp, start=self.hash_file_dir): hash_str
                                       for fp, hash_str in self.filename_hash_dict.items()}
@@ -594,8 +682,9 @@ class HashFile:
     def copy_to(self, mv_path):
         # error when trying to move to diff drive
         if os.path.isabs(mv_path) and (
-                os.path.splitdrive(self.hash_file_dir)[0] != os.path.splitdrive(mv_path)):
-            logger.error("Can't move hash file to a different drive than the files it holds "
+                os.path.splitdrive(self.hash_file_dir)[0].lower() !=
+                os.path.splitdrive(mv_path)[0].lower()):
+            logger.error("Can't move hash file to a different drive than the files it contains "
                          "hashes for!")
             return None
         # need to check that we dont get None from move_fpath
@@ -608,7 +697,7 @@ class HashFile:
         # we dont need to modify our file paths in self.filename_hash_dict since
         # we're using absolute paths anyway
         self.hash_file_dir, self.filename = new_hash_file_dir, new_filename
-        if self.write():
+        if self.write(force=True):
             logger.info("Copied hash file to %s", os.path.join(new_hash_file_dir, new_filename))
         else:
             logger.warning("Hash file was NOT copied!")
@@ -681,12 +770,27 @@ class MixedAlgoHashCollection:
     def __len__(self):
         return len(self.filename_hash_dict)
 
+    def __delitem__(self, file_path):
+        """
+        Pass in file_path (normalized here using normpath) to delete hash from hash file
+
+        :param file_path: Absolute path to hashed file
+        :return: Tuple of hash in hex and name of used hash algorithm
+        """
+        try:
+            # filename_hash_dict uses normalized paths as keys
+            del self.filename_hash_dict[os.path.normpath(file_path)]
+        except KeyError:
+            return False
+        else:
+            return True
+
     def set_hash_for_file(self, algo, file_path, hash_str):
         """
         Sets hash value in HashFile for specified file_path
 
         :param algo: Name string of used hash algorithm
-        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
+        :param file_path: Absolute path to file
                           gets normalized here
         :param hash_str:  Hex-string representation of file hash
         """
@@ -698,7 +802,7 @@ class MixedAlgoHashCollection:
         that path
         KeyError -> None
 
-        :param file_path: Relative path to file from cwd/self.handling_checksumhelper.root_dir
+        :param file_path: Absolute path to file
         :return: Tuple of hash in hex and name of used hash algorithm
         """
         # filename_hash_dict uses normalized paths as keys
@@ -814,6 +918,12 @@ def _cl_copy(args):
     h.read()
     h.copy_to(args.dest_path)
     return h
+
+
+def _cl_move(args):
+    c = ChecksumHelper(args.root_dir, hash_filename_filter=args.hash_filename_filter)
+    c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
+    c.move_files(args.source_path, args.mv_path)
 
 
 def _cl_verify_all(args):
@@ -950,12 +1060,24 @@ if __name__ == "__main__":
     copy.add_argument("source_path", type=str,
                       help="Path to the hash file that should be copied")
     copy.add_argument("dest_path", type=str,
-                      help="Absolute or relative path to destination of copied hash file "
-                           "(paths not ending in \\ or / are assumed to be file paths!): "
-                           "e.g. C:\\test\\photos.sha512, C:\\test\\, ../test/photos.sha512, "
-                           ".\\..\\test2\\")
+                      help="Absolute or relative (to the source_path) path to the destination "
+                           "of copied hash file (paths not ending in \\ or / are assumed to "
+                           "be file paths!): e.g. C:\\test\\photos.sha512, C:\\test\\, "
+                           "../test/photos.sha512, .\\..\\test2\\")
     # set func to call when subcommand is used
     copy.set_defaults(func=_cl_copy)
+
+    move = subparsers.add_parser("move", aliases=["mv"], parents=[parent_parser],
+                                 help="Copy a hash file modifying the relative paths "
+                                      "within accordingly so they are still valid.")
+    move.add_argument("root_dir", type=str,
+                      help="Root directory where we look for hash files in subdirectories")
+    move.add_argument("source_path", type=str,
+                      help="Path to the file or folder that should be moved")
+    move.add_argument("mv_path", type=str,
+                      help="Absolute or relative path to the destination of copied hash file")
+    # set func to call when subcommand is used
+    move.set_defaults(func=_cl_move)
 
     # ------------ VERIFY SUBPARSER ----------------
     verify = subparsers.add_parser("verify", aliases=["vf"], parents=[parent_parser],

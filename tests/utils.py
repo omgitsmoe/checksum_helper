@@ -8,8 +8,8 @@ import pickle
 TESTS_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
-def read_file(fn):
-    with open(fn, "r", encoding="UTF-8") as f:
+def read_file(fn, encoding="UTF-8"):
+    with open(fn, "r", encoding=encoding) as f:
         return f.read()
 
 
