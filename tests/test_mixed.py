@@ -132,6 +132,7 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
         ('Checksum_Helper', logging.WARNING, r'Error: Two following separators in path: ..\\tt_moved4.sha512'),
         ('Checksum_Helper', logging.WARNING, r"Move path '..\\tt_moved4.sha512' was in the wrong format!"),
         ('Checksum_Helper', logging.ERROR, r"Couldn't move file due to a faulty move path!"),
+        ('Checksum_Helper', logging.WARNING, r"Hash file was NOT copied!"),
 
     ]
 
@@ -263,7 +264,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
                 r"thumbs.sha512",
                 )
         ),
-            (-1, ("sub1\*", "thumbs.sha512"), (
+            (-1, ("sub1\\*", "thumbs.sha512"), (
                 r"HDDCol_2019-07-12.sha256",
                 r"infodump_2019-04-06.sha512",
                 r"picsonly-2016-08-23.md5",
