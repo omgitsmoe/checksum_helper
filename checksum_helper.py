@@ -475,6 +475,13 @@ class ChecksumHelper:
             print("\n".join(missing_format))
 
     def move_files(self, source_path, mv_path):
+        # error when trying to move to diff drive
+        if os.path.isabs(mv_path) and (
+                os.path.splitdrive(source_path)[0].lower() !=
+                os.path.splitdrive(mv_path)[0].lower()):
+            logger.error("Can't move files to a different drive than the hash files "
+                         "that hold their hashes!")
+            return None
         if not self.hash_files_initialized():
             self.read_all_hash_files()
 
@@ -501,18 +508,45 @@ class ChecksumHelper:
             logger.error("File %s already exists!", dest_path)
             return None
 
+        # if source_path is a dir check if we need to relocate a hash file
+        if src_is_dir:
+            # relocate path of hash files later since we might be moving a dir into a dir and we
+            # don't know the correct dest_path yet; but we could check for that with
+            # if src_is_dir and dest_is_dir: and then append the basename of source_path
+            # to dest_path
+            # NOTE(m): We need to search for hash files in the dir we're moving recursively but
+            #          we actually need to relocate or at least read them in as HashFile before
+            #          the move, otherwise the relative paths won't match anymore!
+            #          Can't do this by looping over self.all_hash_files since the files that
+            #          need relocation might not be in there due to filters or a depth limit
+
+            # set containing all paths of hash files that were already read into self.all_hash_files
+            all_hash_files_paths = {hf.get_path() for hf in self.all_hash_files}
+            # all hash files that we have to move with hash files that were already in
+            # self.all_hash_files filtered out
+            hash_files_to_move = [HashFile(self, os.path.normpath(hfile_path))
+                                  for hfile_path in discover_hash_files(source_path, depth=-1)
+                                  if os.path.normpath(hfile_path) not in all_hash_files_paths]
+            # IMPORTANT read the hash files that were not in self.all_hash_files
+            for hf in hash_files_to_move:
+                hf.read()
+        # check if the file we're moving is a hash file and if it's not in self.all_hash_files
+        else:
+            hash_files_to_move = ([HashFile(self, source_path)]
+                                  if source_path.rsplit('.', 1)[1] in HASH_FILE_EXTENSIONS
+                                     and source_path not in
+                                     [hf.get_path() for hf in self.all_hash_files]
+                                  else [])
+
         # Recursively move a file or directory (src) to another location (dst)
         # and return the destination.
         # If the destination is an existing directory, then src is moved inside that
         # directory. If the destination already exists but is not a directory, it may
         # be overwritten depending on os.rename() semantics.
-        shutil.move(source_path, dest_path)
-
-        # if we move a dir to an existing dir we move the dir into the existing dir
-        # so we append the parent dir to dest
-        # src C:\test\dir dest C:\bla -> C:\bla\dir\*
-        if dest_exists and dest_is_dir and src_is_dir:
-            dest_path = os.path.join(dest_path, os.path.basename(source_path))
+        # path returned is the path of the file or folder that was moved so
+        # if we move a dir to an existing dir we move the dir into the existing dir:
+        # shutil.move("dir", "into") -> 'into\\dir' is returned
+        dest_path = shutil.move(source_path, dest_path)
 
         for hash_file in self.all_hash_files:
             if src_is_dir:
@@ -526,7 +560,6 @@ class ChecksumHelper:
                         moved_fn_hash_dict[fpath] = hash_str
                 # replace with new fn hash dict
                 hash_file.filename_hash_dict = moved_fn_hash_dict
-                hash_file.write(force=True)
             else:
                 # save hash and del old path entry and replace it with new path
                 hash_str, _ = hash_file.get_hash_by_file_path(source_path)
@@ -535,14 +568,29 @@ class ChecksumHelper:
                     continue
 
                 del hash_file[source_path]
-                if dest_is_dir:
-                    # file moved INTO dir -> append filename to dest
-                    hash_file.set_hash_for_file(os.path.join(dest_path,
-                                                             os.path.basename(source_path)),
-                                                hash_str)
+                # even if file was moved INTO dir we can use dest_path without modification
+                # since shutil.move returned the direct path to the file it moved
+                hash_file.set_hash_for_file(dest_path, hash_str)
+
+            # check if hash_file was also moved
+            if hash_file.get_path().startswith(source_path):
+                # we already got the path pointing directly to the moved file/dir from
+                # shutil.move even if the target was a dir
+                if src_is_dir:
+                    hash_file.relocate(hash_file.get_path().replace(source_path, dest_path))
                 else:
-                    hash_file.set_hash_for_file(dest_path, hash_str)
-                hash_file.write(force=True)
+                    hash_file.relocate(dest_path)
+            hash_file.write(force=True)
+
+        # move additional hash files that were not in self.all_hash_files
+        for hash_file in hash_files_to_move:
+            # we already got the path pointing directly to the moved file/dir from
+            # shutil.move even if the target was a dir
+            if src_is_dir:
+                hash_file.relocate(hash_file.get_path().replace(source_path, dest_path))
+            else:
+                hash_file.relocate(dest_path)
+            hash_file.write(force=True)
 
 
 class HashFile:
@@ -552,7 +600,7 @@ class HashFile:
         # so we can build the path to files from root_dir correctly
         # from path in hash file
         # make sure we get an absolute path
-        self.hash_file_dir, self.filename = os.path.split(os.path.abspath(path_to_hash_file))
+        self.hash_file_dir, self.filename = os.path.split(os.path.normpath(os.path.abspath(path_to_hash_file)))
         # i dont thik ill ever need this
         # self.hash_filename_dict = {}
         self.filename_hash_dict = {}
@@ -560,6 +608,15 @@ class HashFile:
         # path to dir of hash file -> relpath from self.handling_checksumhelper.root_dir
         # since we set cwd to self.handling_checksumhelper.root_dir
         self.hash_type = self.filename.rsplit(".", 1)[-1]
+
+    def __eq__(self, other):
+        """
+        Behaviour for '==' operator
+        """
+        try:
+            return self.get_path() == other.get_path()
+        except AttributeError:
+            return False
 
     def __contains__(self, file_path):
         return os.path.normpath(file_path) in self.filename_hash_dict
@@ -655,8 +712,8 @@ class HashFile:
                     logger.warning("Found absolute path in hash file: %s", self.get_path())
                     warned_abspath = True
                 # if drive letters dont match abort and let user handle this manually
-                if (os.path.splitdrive(self.get_path())[0] !=
-                        os.path.splitdrive(file_path)[0]):
+                if (os.path.splitdrive(self.get_path())[0].lower() !=
+                        os.path.splitdrive(file_path)[0].lower()):
                     raise AbspathDrivesDontMatch(
                             "Drive letters of the hash file "
                             f"'{os.path.abspath(self.get_path())}' and the absolute path "
@@ -679,7 +736,7 @@ class HashFile:
             return True
         return False
 
-    def copy_to(self, mv_path):
+    def relocate(self, mv_path):
         # error when trying to move to diff drive
         if os.path.isabs(mv_path) and (
                 os.path.splitdrive(self.hash_file_dir)[0].lower() !=
@@ -697,6 +754,10 @@ class HashFile:
         # we dont need to modify our file paths in self.filename_hash_dict since
         # we're using absolute paths anyway
         self.hash_file_dir, self.filename = new_hash_file_dir, new_filename
+        return new_hash_file_dir, new_filename
+    
+    def copy_to(self, mv_path):
+        new_hash_file_dir, new_filename = self.relocate(mv_path)
         if self.write(force=True):
             logger.info("Copied hash file to %s", os.path.join(new_hash_file_dir, new_filename))
         else:

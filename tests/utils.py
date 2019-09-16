@@ -105,3 +105,8 @@ def setup_tmpdir_param():
 class Args:
     def __init__(self, *args, **kwargs):
         self.__dict__.update(kwargs)
+
+
+def sort_hf_contents(cont):
+    return sorted([ln.split(" *", 1) for ln in cont.splitlines()],
+                  key=lambda x: x[1])
