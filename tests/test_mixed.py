@@ -129,6 +129,9 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
     # no file written
     assert not os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved4.sha512"))
     assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!" % hf.get_path()),
         ('Checksum_Helper', logging.WARNING, r'Error: Two following separators in path: ..\\tt_moved4.sha512'),
         ('Checksum_Helper', logging.WARNING, r"Move path '..\\tt_moved4.sha512' was in the wrong format!"),
         ('Checksum_Helper', logging.ERROR, r"Couldn't move file due to a faulty move path!"),
@@ -288,3 +291,22 @@ def test_discover_hashfiles(depth, exclude, expected):
     root_dir = os.path.join(TESTS_DIR, "test_mixed_files", "discover")
     assert sorted(discover_hash_files(root_dir, depth, exclude_pattern=exclude)) == sorted([
             os.path.join(root_dir, p.replace('\\', os.sep)) for p in expected])
+
+
+def test_warn_pardir(caplog):
+    root_dir = os.path.join(TESTS_DIR, "test_mixed_files", "warn_pardir")
+    caplog.clear()
+    caplog.set_level(logging.WARNING, logger='Checksum_Helper')
+    hf = HashFile(None, os.path.join(root_dir, "ok.sha512"))
+    hf.read()
+    assert caplog.record_tuples == []
+
+    caplog.clear()
+    hf = HashFile(None, os.path.join(root_dir, "warn.sha512"))
+    hf.read()
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!"
+                                             % os.path.join(root_dir, "warn.sha512")),
+    ]

@@ -668,7 +668,7 @@ class HashFile:
                 # context manager doesnt work now so close file manually
                 af.close()
 
-        warned_abspath = False
+        warned_abspath, warned_pardir_ref = False, False
         for ln in text.splitlines():
             # TODO(m): support text mode?
             # from GNU *sum utils:
@@ -694,6 +694,14 @@ class HashFile:
                             "Drive letters of the hash file "
                             f"'{os.path.abspath(self.get_path())}' and the absolute path "
                             f"'{file_path}' don't match! This needs to be fixed manually!")
+            else:
+                if not warned_pardir_ref and '..' + os.sep in os.path.normpath(file_path):
+                    logger.warning("Found reference beyond the hash file's root dir in file: '%s'. "
+                                   "Consider moving/copying the file using ChecksumHelper move/copy "
+                                   "to the path that is the most common denominator!",
+                                   self.get_path())
+                    warned_pardir_ref = True
+
 
             # use normpath here to ensure that paths get normalized
             # since we use them as keys

@@ -126,41 +126,42 @@ def test_move_files(src, dst, depth, hash_fn_filter, expected_files_dirname, mov
              discover_hash_files_depth=depth, source_path=src, mv_path=dst)
     _cl_move(a)
     if src == os.path.join("sub4", "file1.txt") and dst == os.path.join("sub2", "sub1"):
-        assert caplog.record_tuples == [
+        # filter out hash file pardir warning
+        assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
             ('Checksum_Helper', logging.ERROR,
              "File %s already exists!"
              % (os.path.join(root_dir, "sub2", "sub1", "file1.txt"),)
             ),
         ]
     elif src == os.path.join("sub4", "file1.txt") and dst == os.path.join("sub2", "sub1", "file1.txt"):
-        assert caplog.record_tuples == [
+        assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
             ('Checksum_Helper', logging.ERROR,
              "File %s already exists!" % (os.path.join(root_dir, "sub2", "sub1", "file1.txt"),)
             ),
         ]
     elif src == "sub1" and dst == "sub2":
-        assert caplog.record_tuples == [
+        assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
             ('Checksum_Helper', logging.ERROR,
              "Couldn't move file(s): Destination path '%s' already exists"
              % (os.path.join(root_dir, "sub2", "sub1"),)
             ),
         ]
     elif src == "sub1" and dst == os.path.join("sub1", "sub5"):
-        assert caplog.record_tuples == [
+        assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
             ('Checksum_Helper', logging.ERROR,
              "Couldn't move file(s): Cannot move a directory '%s' into itself '%s'."
              % (os.path.join(root_dir, "sub1"), os.path.join(root_dir, "sub1", "sub5"))
             ),
         ]
     elif src == os.path.join("sub3", "sub1") and dst == "sub4":
-        assert caplog.record_tuples == [
+        assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
             ('Checksum_Helper', logging.ERROR,
              "Couldn't move file(s): Destination path '%s' already exists"
              % (os.path.join(root_dir, "sub4", "sub1"))
             ),
         ]
     elif src == os.path.join("sub4", "file1.txt") and dst == os.path.join([d for d in "abcdefghijklmnopqrstuvwxyz" if d != TESTS_DIR[0].lower()][0] + ":", os.sep, "sub2", "sub1"):
-        assert caplog.record_tuples == [
+        assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
             ('Checksum_Helper', logging.ERROR,
              "Can't move files to a different drive than the hash files "
               "that hold their hashes!"),

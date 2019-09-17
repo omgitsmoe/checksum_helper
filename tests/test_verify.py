@@ -23,6 +23,10 @@ def test_verify_hfile(caplog):
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!"
+                                             % os.path.join(test_verify_root, "sub3", "sub2", "sub3_sub2.sha512")),
         ('Checksum_Helper', logging.INFO, r'..\file1.txt: OK'),
         ('Checksum_Helper', logging.WARNING, r'..\sub1\file1.txt: FAILED'),
         ('Checksum_Helper', logging.INFO, r'file1.txt: OK'),
@@ -144,6 +148,10 @@ def test_verify_all(caplog):
     caplog.clear()
     assert _cl_verify_all(a) == (16, 11, 3, 2)
     assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!"
+                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
         ('Checksum_Helper', logging.INFO, r'new 2.txt: MD5 OK'),
         ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: SHA512 FAILED'),
@@ -173,6 +181,10 @@ def test_verify_all(caplog):
     caplog.clear()
     assert _cl_verify_all(a) == (15, 10, 3, 2)
     assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!"
+                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
         ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: OK'),
         ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: FAILED'),
         ('Checksum_Helper', logging.INFO, r'sub3\sub2\file1.txt: OK'),
@@ -233,6 +245,10 @@ def test_verify_filter(caplog):
     caplog.clear()
     _cl_verify_filter(a)
     assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!"
+                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
         ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: SHA512 FAILED'),
         ('Checksum_Helper', logging.INFO, r'sub3\sub2\file1.txt: SHA512 OK'),
@@ -256,6 +272,10 @@ def test_verify_filter(caplog):
     caplog.clear()
     _cl_verify_filter(a)
     assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!"
+                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
         ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: OK'),
         ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: FAILED'),
         ('Checksum_Helper', logging.INFO, r'sub3\sub2\file1.txt: OK'),
@@ -286,6 +306,10 @@ def test_verify_filter(caplog):
     caplog.clear()
     _cl_verify_filter(a)
     assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+                                             "Consider moving/copying the file using ChecksumHelper move/copy "
+                                             "to the path that is the most common denominator!"
+                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
         ('Checksum_Helper', logging.WARNING, r'new 3.txt: FAILED'),
         ('Checksum_Helper', logging.INFO, r'new 4.txt: OK'),
         ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: OK'),
