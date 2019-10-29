@@ -101,7 +101,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
     monkeypatch.setattr('builtins.input', lambda x: "y")
 
     a = Args(path=root_dir, hash_filename_filter=hash_fn_filter,
-             filter_unchanged=include_unchanged, discover_hash_files_depth=depth,
+             include_unchanged=include_unchanged, discover_hash_files_depth=depth,
              hash_algorithm="sha512", whitelist=whitelist, blacklist=blacklist)
     _cl_incremental(a)
     if whitelist is not None and blacklist is not None:

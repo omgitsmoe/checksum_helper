@@ -1,2 +1,1 @@
 - change crc to sfv file ext
-- warn when ther are pardir refs in hash file

@@ -935,7 +935,7 @@ def _cl_check_missing(args):
 def _cl_incremental(args):
     c = ChecksumHelper(args.path,
                        hash_filename_filter=args.hash_filename_filter)
-    c.options["include_unchanged_files_incremental"] = False if args.filter_unchanged else True
+    c.options["include_unchanged_files_incremental"] = True if args.include_unchanged else False
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.do_incremental_checksums(args.hash_algorithm, whitelist=args.whitelist,
                                blacklist=args.blacklist)
@@ -1060,8 +1060,8 @@ if __name__ == "__main__":
                                              "(or all) will be written to file!")
     incremental.add_argument("path", type=str)
     incremental.add_argument("hash_algorithm", type=str)
-    incremental.add_argument("-fu", "--filter-unchanged", action="store_false",
-                             help="Dont include the checksum of unchanged files in the output")
+    incremental.add_argument("-iu", "--include-unchanged", action="store_true",
+                             help="Include the checksum of unchanged files in the output")
     # only either white or blacklist can be used at the same time - not both
     inc_wl_or_bl = incremental.add_mutually_exclusive_group()
     inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
