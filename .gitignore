@@ -39,7 +39,7 @@
 **/tmp_*/
 *.log
 !.gitignore
-
+!README.md
 !MANIFEST.in
 !requirements.txt
 !setup.cfg
