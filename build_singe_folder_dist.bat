@@ -1,0 +1,1 @@
+pyinstaller checksum_helper.spec
