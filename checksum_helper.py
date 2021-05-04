@@ -260,6 +260,21 @@ def discover_hash_files(start_path, depth=2, exclude_pattern=None):
     return hashfiles
 
 
+def include_path(path, whitelist=None, blacklist=None):
+    """expects that only one of white/blacklist is not None"""
+    include = True
+    if whitelist and not any(wildcard_match(pat, path) for pat in whitelist):
+        # if we have a whitelist only include files that match one of the whitelist
+        # patterns
+        include = False
+    elif blacklist and any(wildcard_match(pat, path) for pat in blacklist):
+        # if we have a blacklist only include files that dont match one of the
+        # blacklisted patterns
+        include = False
+
+    return include
+
+
 class ChecksumHelper:
     def __init__(self, root_dir, hash_filename_filter=None):
         self.root_dir = os.path.abspath(os.path.normpath(root_dir))
@@ -350,6 +365,9 @@ class ChecksumHelper:
 
         if start_path is None:
             start_path = self.root_dir
+        elif start_path and not start_path.startswith(self.root_dir + os.sep):
+            logger.error("start_path has to be a subpath of the current ChecksumHelper's root dir")
+            return
 
         dir_name = os.path.basename(start_path)
         incremental = HashFile(
@@ -361,19 +379,18 @@ class ChecksumHelper:
                 file_path = os.path.join(dirpath, fname)
                 # replace works here for computing the relpath since all paths share
                 # self.root_dir (it's part of dirpath)
-                rel_fpath = file_path[len(start_path):]
+                # rel_fpath = file_path[len(start_path) + 1:]
+                # + 1 for last os.sep
+                rel_from_root = file_path[len(self.root_dir) + 1:]
                 # exclude own logs
                 if fname == LOG_BASENAME or (
                         fname.startswith(LOG_BASENAME + '.') and
                         fname.split(LOG_BASENAME + '.', 1)[1].isdigit()):
                     continue
-                elif whitelist and not any(wildcard_match(pat, rel_fpath) for pat in whitelist):
-                    # if we have a whitelist only include files that match one of the whitelist
-                    # patterns
-                    continue
-                elif blacklist and any(wildcard_match(pat, rel_fpath) for pat in blacklist):
-                    # if we have a blacklist only include files that dont match one of the
-                    # blacklisted patterns
+                # match white/blacklist against relative path starting from root dir
+                # so it behaves correctly for different start_paths and it's
+                # not confusing for the user
+                if not include_path(rel_from_root, whitelist, blacklist):
                     continue
 
                 new_hash, include = self._build_verfiy_hash(file_path, algo_name)
@@ -388,7 +405,8 @@ class ChecksumHelper:
             if root_only:
                 break
 
-        incremental.write()
+        if incremental.filename_hash_dict:
+            incremental.write()
 
     def _build_verfiy_hash(self, file_path, algo_name):
         new_hash = None
@@ -969,6 +987,10 @@ def _cl_incremental(args):
             if not os.path.isdir(os.path.join(args.path, dp)):
                 continue
 
+            dirpath = dp + os.sep
+            if not include_path(dirpath, args.whitelist, args.blacklist):
+                continue
+
             c.do_incremental_checksums(
                 args.hash_algorithm,
                 start_path=os.path.abspath(os.path.join(args.path, dp)),
@@ -1104,9 +1126,11 @@ if __name__ == "__main__":
     inc_wl_or_bl = incremental.add_mutually_exclusive_group()
     inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
                               help="Only file paths matching one of the wildcard patterns "
-                                   "will be hashed", type=str)
+                                   "will be hashed; Need to use / or \\ depending on os "
+                                   "they won't match each other", type=str)
     inc_wl_or_bl.add_argument("-bl", "--blacklist", nargs="+", metavar='PATTERN', default=None,
-                              help="Wildcard patterns matching file paths to exclude from hasing",
+                              help="Wildcard patterns matching file paths to exclude from hasing"
+                                   "; Need to use / or \\ depending on os they won't match each other",
                               type=str)
     incremental.add_argument("--per-directory", action="store_true", default=False,
                              help="Create one hash file per __top-level__ directory")

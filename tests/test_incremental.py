@@ -118,7 +118,13 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
         assert(verified_sha_contents == generated_sha_contents)
 
 
-def test_do_incremental_per_dir(setup_tmpdir_param):
+@pytest.mark.parametrize(
+    "whitelist, blacklist, expected_dir",
+    [(None, None, "per_dir_results"),
+     (None, [f"sub1{os.sep}*", "*.jpg"], "per_dir_results_bl"),
+     ([f"sub1{os.sep}*"], None, "per_dir_results_wl")]
+)
+def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir_param):
     tmpdir = setup_tmpdir_param
     root_dir = os.path.join(tmpdir, "tt")
     shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "per_dir"),
@@ -126,7 +132,7 @@ def test_do_incremental_per_dir(setup_tmpdir_param):
 
     a = Args(path=root_dir, hash_filename_filter=None,
              include_unchanged=True, discover_hash_files_depth=-1,
-             hash_algorithm="sha512", per_directory=True, whitelist=None, blacklist=None)
+             hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist)
     _cl_incremental(a)
 
     expected_res = [
@@ -138,10 +144,15 @@ def test_do_incremental_per_dir(setup_tmpdir_param):
     ]
 
     for expected_fn, result_fn in expected_res:
-        verified_sha_contents = read_file(os.path.join(TESTS_DIR,
-                                                       "test_incremental_files",
-                                                       "per_dir_results",
-                                                       expected_fn))
+        try :
+            verified_sha_contents = read_file(os.path.join(TESTS_DIR,
+                                                           "test_incremental_files",
+                                                           expected_dir,
+                                                           expected_fn))
+        except FileNotFoundError:
+            # make sure generated file is also missing
+            assert not os.path.exists(os.path.join(root_dir, result_fn))
+            continue
 
         generated_sha_contents = read_file(os.path.join(root_dir, result_fn))
 
