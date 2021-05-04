@@ -332,10 +332,15 @@ class ChecksumHelper:
                 else:
                     self.hash_file_most_current.set_hash_for_file(hash_type, combined_path, hash_str)
 
-    def do_incremental_checksums(self, algo_name, whitelist=None, blacklist=None):
+    def do_incremental_checksums(
+            self, algo_name, start_path=None, root_only=False,
+            whitelist=None, blacklist=None):
         """
         Creates checksums for all changed files (that dont match checksums in
         hash_file_most_current)
+
+        start_path: has to be a subpath of self.root_dir
+        root_only:  only do incremental checksums for the files of the root/start_path only
         """
         if whitelist is not None and blacklist is not None:
             logger.error("Can only use either a whitelist or blacklist - not both!")
@@ -343,16 +348,20 @@ class ChecksumHelper:
         if not self.hash_file_most_current:
             self.build_most_current()
 
-        incremental = HashFile(
-                self, os.path.join(self.root_dir, f"{self.root_dir_name}_"
-                                                  f"{time.strftime('%Y-%m-%d')}.{algo_name}"))
+        if start_path is None:
+            start_path = self.root_dir
 
-        for dirpath, dirnames, fnames in os.walk(self.root_dir):
+        dir_name = os.path.basename(start_path)
+        incremental = HashFile(
+                self, os.path.join(start_path, f"{dir_name}_"
+                                               f"{time.strftime('%Y-%m-%d')}.{algo_name}"))
+
+        for dirpath, dirnames, fnames in os.walk(start_path):
             for fname in fnames:
                 file_path = os.path.join(dirpath, fname)
                 # replace works here for computing the relpath since all paths share
                 # self.root_dir (it's part of dirpath)
-                rel_fpath = file_path.replace(self.root_dir + os.sep, '', 1)
+                rel_fpath = file_path[len(start_path):]
                 # exclude own logs
                 if fname == LOG_BASENAME or (
                         fname.startswith(LOG_BASENAME + '.') and
@@ -375,6 +384,9 @@ class ChecksumHelper:
                     # file_path)
                     # filename_hash_dict[os.path.normpath(file_path)] = new_hash
                     incremental.set_hash_for_file(file_path, new_hash)
+
+            if root_only:
+                break
 
         incremental.write()
 
@@ -464,6 +476,10 @@ class ChecksumHelper:
                 all_files.add(file_path)
 
         missing_files = all_files - file_paths
+
+        # @Cleanup remove empty folders from missing dirs
+        missing_dirs = [d for d in missing_dirs if len(os.listdir(d)) > 0]
+
         if missing_dirs or missing_files:
             print("!!! NOT CHECKED IF CHECKSUMS STILL MATCH THE FILES !!!")
             print("Directories (D - where all files including subdirs are missing checksums) "
@@ -559,12 +575,11 @@ class ChecksumHelper:
                     hash_file.set_hash_for_file(dest_path, hash_str)
 
             # check if hash_file was also moved
-            if hash_file.get_path().startswith(source_path):
+            if src_is_dir and hash_file.get_path().startswith(source_path):
                 # we already got the path pointing directly to the moved file/dir from
                 # shutil.move even if the target was a dir
-                if src_is_dir:
                     hash_file.relocate(hash_file.get_path().replace(source_path, dest_path))
-                else:
+            elif not src_is_dir and hash_file.get_path() == source_path:
                     hash_file.relocate(dest_path)
             hash_file.write(force=True)
 
@@ -709,16 +724,22 @@ class HashFile:
             self.filename_hash_dict[abs_normed_path] = hash_str
 
     def write(self, force=False):
-        if force or cli_yes_no(f"Do you want to write {self.get_path()}?"):
-            # convert absolute paths to paths that are relative to the hash file location
-            abs_filename_hash_dict = {os.path.relpath(fp, start=self.hash_file_dir): hash_str
-                                      for fp, hash_str in self.filename_hash_dict.items()}
-            hashfile_str = build_hashfile_str(*abs_filename_hash_dict.items())
-            # TotalCommander needs UTF-8 BOM for checksum files so use UTF-8-SIG
-            with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
-                w.write(hashfile_str)
-            return True
-        return False
+        write_file = False
+        if os.path.exists(self.get_path()) and not force:
+            if cli_yes_no(f"Do you want to overwrite {self.get_path()}?"):
+                write_file = True
+        else:
+            write_file = True
+
+        # convert absolute paths to paths that are relative to the hash file location
+        abs_filename_hash_dict = {os.path.relpath(fp, start=self.hash_file_dir): hash_str
+                                  for fp, hash_str in self.filename_hash_dict.items()}
+        hashfile_str = build_hashfile_str(*abs_filename_hash_dict.items())
+        # TotalCommander needs UTF-8 BOM for checksum files so use UTF-8-SIG
+        with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
+            w.write(hashfile_str)
+
+        return write_file
 
     def relocate(self, mv_path):
         # error when trying to move to diff drive
@@ -864,7 +885,7 @@ class MixedAlgoHashCollection:
                 # verify stored hash using old algo still matches
                 new_hash = gen_hash_from_file(file_path, algo_name)
                 if new_hash != hash_str:
-                    logger.warning("File doesnt match most current hash: %s!", hash_str)
+                    logger.warning("File %s doesnt match most current hash: %s!", file_path, hash_str)
                 new_hash = gen_hash_from_file(file_path, convert_algo_name)
 
                 most_current_single.set_hash_for_file(file_path, new_hash)
@@ -937,8 +958,25 @@ def _cl_incremental(args):
                        hash_filename_filter=args.hash_filename_filter)
     c.options["include_unchanged_files_incremental"] = True if args.include_unchanged else False
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
-    c.do_incremental_checksums(args.hash_algorithm, whitelist=args.whitelist,
-                               blacklist=args.blacklist)
+    if args.per_directory:
+        c.do_incremental_checksums(
+            args.hash_algorithm,
+            root_only=True,
+            whitelist=args.whitelist,
+            blacklist=args.blacklist)
+
+        for dp in os.listdir(args.path):
+            if not os.path.isdir(os.path.join(args.path, dp)):
+                continue
+
+            c.do_incremental_checksums(
+                args.hash_algorithm,
+                start_path=os.path.abspath(os.path.join(args.path, dp)),
+                whitelist=args.whitelist,
+                blacklist=args.blacklist)
+    else:
+        c.do_incremental_checksums(args.hash_algorithm, whitelist=args.whitelist,
+                                   blacklist=args.blacklist)
 
 
 def _cl_build_most_current(args):
@@ -1070,6 +1108,8 @@ if __name__ == "__main__":
     inc_wl_or_bl.add_argument("-bl", "--blacklist", nargs="+", metavar='PATTERN', default=None,
                               help="Wildcard patterns matching file paths to exclude from hasing",
                               type=str)
+    incremental.add_argument("--per-directory", action="store_true", default=False,
+                             help="Create one hash file per __top-level__ directory")
     # set func to call when subcommand is used
     incremental.set_defaults(func=_cl_incremental)
 
@@ -1097,7 +1137,7 @@ if __name__ == "__main__":
     # set func to call when subcommand is used
     check_missing.set_defaults(func=_cl_check_missing)
 
-    copy = subparsers.add_parser("copy", aliases=["cp"],
+    copy = subparsers.add_parser("copy_hf", aliases=["cphf"], parents=[parent_parser],
                                  help="Copy a hash file modifying the relative paths "
                                       "within accordingly so they are still valid.")
     copy.add_argument("source_path", type=str,
@@ -1110,9 +1150,10 @@ if __name__ == "__main__":
     # set func to call when subcommand is used
     copy.set_defaults(func=_cl_copy)
 
-    move = subparsers.add_parser("move", aliases=["mv"],
-                                 help="Copy a hash file modifying the relative paths "
-                                      "within accordingly so they are still valid.")
+    move = subparsers.add_parser("move", aliases=["mv"], parents=[parent_parser],
+                                 help="Move a (hash-)file/folder modifying the paths "
+                                      "in hash files that were found in subdirs of the root_dir "
+                                      "accordingly so they are still valid.")
     move.add_argument("root_dir", type=str,
                       help="Root directory where we look for hash files in subdirectories. "
                            "Make sure to choose this wisely since file paths of moved files "

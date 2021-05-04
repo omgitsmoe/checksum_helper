@@ -33,11 +33,9 @@ def setup_dir_to_checksum(request, setup_tmpdir_param):
     del checksume_hlpr
 
 
-def test_do_incremental(setup_dir_to_checksum, monkeypatch):
+def test_do_incremental(setup_dir_to_checksum):
     checksume_hlpr, include_unchanged, root_dir = setup_dir_to_checksum
     assert os.path.isabs(checksume_hlpr.root_dir)
-    # This simulates the user entering "y" in the terminal:
-    monkeypatch.setattr('builtins.input', lambda x: "y")
 
     checksume_hlpr.do_incremental_checksums("sha512")
 
@@ -102,7 +100,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
 
     a = Args(path=root_dir, hash_filename_filter=hash_fn_filter,
              include_unchanged=include_unchanged, discover_hash_files_depth=depth,
-             hash_algorithm="sha512", whitelist=whitelist, blacklist=blacklist)
+             hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist)
     _cl_incremental(a)
     if whitelist is not None and blacklist is not None:
         assert caplog.record_tuples == [
@@ -116,5 +114,35 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
         # find written sha (current date is appended)
         generated_sha_name = f"wl_bl_{time.strftime('%Y-%m-%d')}.sha512"
         generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
+
+        assert(verified_sha_contents == generated_sha_contents)
+
+
+def test_do_incremental_per_dir(setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+    root_dir = os.path.join(tmpdir, "tt")
+    shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "per_dir"),
+                    os.path.join(root_dir, ""))
+
+    a = Args(path=root_dir, hash_filename_filter=None,
+             include_unchanged=True, discover_hash_files_depth=-1,
+             hash_algorithm="sha512", per_directory=True, whitelist=None, blacklist=None)
+    _cl_incremental(a)
+
+    expected_res = [
+        ("root.sha512", f"tt_{time.strftime('%Y-%m-%d')}.sha512"),
+        ("sub1.sha512", os.path.join("sub1", f"sub1_{time.strftime('%Y-%m-%d')}.sha512")),
+        ("sub2.sha512", os.path.join("sub2", f"sub2_{time.strftime('%Y-%m-%d')}.sha512")),
+        ("sub3.sha512", os.path.join("sub3", f"sub3_{time.strftime('%Y-%m-%d')}.sha512")),
+        ("sub4.sha512", os.path.join("sub4", f"sub4_{time.strftime('%Y-%m-%d')}.sha512")),
+    ]
+
+    for expected_fn, result_fn in expected_res:
+        verified_sha_contents = read_file(os.path.join(TESTS_DIR,
+                                                       "test_incremental_files",
+                                                       "per_dir_results",
+                                                       expected_fn))
+
+        generated_sha_contents = read_file(os.path.join(root_dir, result_fn))
 
         assert(verified_sha_contents == generated_sha_contents)
