@@ -741,11 +741,19 @@ class HashFile:
             abs_normed_path = os.path.normpath(os.path.join(self.hash_file_dir, file_path))
             self.filename_hash_dict[abs_normed_path] = hash_str
 
-    def write(self, force=False):
+    def write(self, force=False) -> bool:
         write_file = False
         if os.path.exists(self.get_path()) and not force:
-            if cli_yes_no(f"Do you want to overwrite {self.get_path()}?"):
+            inp = input(f"Do you want to overwrite {self.get_path()} or should "
+                        "the generated file be renamed(ren)? (y/n/ren): ").strip().lower()
+            if inp == "y" or inp == "yes":
                 write_file = True
+            elif inp == "ren" or inp == "rename":
+                write_file = True
+                fn, ext = os.path.splitext(self.filename)
+                # date is already ISO 8601 add time as well omitting ':' since it's a banned
+                # char for windows filenames
+                self.filename = f"{fn}T{time.strftime('%H%M%S')}.{ext}"
         else:
             write_file = True
 
@@ -1140,7 +1148,8 @@ if __name__ == "__main__":
     build_most_current = subparsers.add_parser("build-most-current", aliases=["build"],
                                                parents=[parent_parser],
                                                help="Discover hash files in subdirectories and "
-                                                    "write the newest ones to file.")
+                                                    "write the newest ones to file. ATTENTION: "
+                                                    "removes hashes of missing files by default!")
     build_most_current.add_argument("path", type=str)
     build_most_current.add_argument("-alg", "--hash-algorithm", type=str, default="sha512",
                                     help="If most current hashes include mixed algorithms, "
