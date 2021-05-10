@@ -12,6 +12,25 @@ from logging.handlers import RotatingFileHandler
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
 LOG_BASENAME = "chsmhlpr.log"
 
+LOG_LVL_VERBOSE = logging.INFO - 1
+LOG_LVL_EXTRAVERBOSE = logging.INFO - 2
+logging.addLevelName(LOG_LVL_VERBOSE, "INFOV")
+logging.addLevelName(LOG_LVL_EXTRAVERBOSE, "INFOVV")
+
+
+# logging function for new level
+def infov(self, message, *args, **kws) -> None:
+    if self.isEnabledFor(LOG_LVL_VERBOSE):
+        # Yes, logger takes its '*args' as 'args'.
+        self._log(LOG_LVL_VERBOSE, message, args, **kws) 
+logging.Logger.infov = infov  # type: ignore
+
+
+def infovv(self, message, *args, **kws) -> None:
+    if self.isEnabledFor(LOG_LVL_EXTRAVERBOSE):
+        self._log(LOG_LVL_EXTRAVERBOSE, message, args, **kws) 
+logging.Logger.infovv = infovv  # type: ignore
+
 logger = logging.getLogger("Checksum_Helper")
 logger.setLevel(logging.DEBUG)
 
@@ -375,6 +394,7 @@ class ChecksumHelper:
                                                f"{time.strftime('%Y-%m-%d')}.{algo_name}"))
 
         for dirpath, dirnames, fnames in os.walk(start_path):
+            # TODO filter dirnames before traversing into them
             for fname in fnames:
                 file_path = os.path.join(dirpath, fname)
                 # replace works here for computing the relpath since all paths share
@@ -402,6 +422,7 @@ class ChecksumHelper:
                     # filename_hash_dict[os.path.normpath(file_path)] = new_hash
                     incremental.set_hash_for_file(file_path, new_hash)
 
+            logger.infov("Finished hasing files in %s", dirpath)
             if root_only:
                 break
 
@@ -430,8 +451,8 @@ class ChecksumHelper:
                 include = True
 
             if algo_name != hash_algo_str:
-                logger.debug("Last hash used %s as algorithm -> generating "
-                             "new hash with %s!", hash_algo_str, algo_name)
+                logger.infov("Existing hash used %s as algorithm -> re-hashing "
+                             "with %s: %s!", hash_algo_str, algo_name, file_path)
                 new_hash = gen_hash_from_file(file_path, algo_name)
                 include = True
 
@@ -1120,6 +1141,8 @@ if __name__ == "__main__":
                                help="Number of subdirs to descend down to search for hash files; "
                                     "0 -> root dir only, -1 -> max depth; Default: -1",
                                metavar="DEPTH")
+    parent_parser.add_argument("-v", "--verbosity", action="count", default=0,
+                               help="increase output verbosity")
 
     incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser],
                                         help="Discover hash files in subdirectories and verify"
@@ -1238,4 +1261,10 @@ if __name__ == "__main__":
         # default to stdout, but stderr would be better (use sys.stderr, then exit(1))
         parser.print_help()
         sys.exit(0)
+
+    if args.verbosity == 1:
+        stdohandler.setLevel(LOG_LVL_VERBOSE)
+    elif args.verbosity >= 2:
+        stdohandler.setLevel(LOG_LVL_EXTRAVERBOSE)
+
     args.func(args)
