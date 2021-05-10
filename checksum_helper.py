@@ -1206,7 +1206,7 @@ if __name__ == "__main__":
     verify_subcmds = verify.add_subparsers(title='verify',
                                            description='Commands for verfying operations',
                                            dest="verisubcmd")
-    verify_all = verify_subcmds.add_parser("all", aliases=(), parents=[parent_parser],
+    verify_all = verify_subcmds.add_parser("all", aliases=(),
                                            help="Discover all hash files and verify the most "
                                                 "up-to-date file hashes found for given "
                                                 "directories")
@@ -1221,7 +1221,7 @@ if __name__ == "__main__":
                               help="Path to hash file(s)")
     verify_hfile.set_defaults(func=_cl_verify_hfile)
 
-    verify_filter = verify_subcmds.add_parser("filter", aliases=('f',), parents=[parent_parser],
+    verify_filter = verify_subcmds.add_parser("filter", aliases=('f',),
                                               help="Verify all files that match one of the"
                                                    " supplied filters")
     verify_filter.add_argument("root_dir", type=str,
