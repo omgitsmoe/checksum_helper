@@ -337,3 +337,22 @@ bcdefghijabcdefghijkabcdefghijklabcdefghijklmabcdefghijklmn",
     wildcard_caller("oWn", "", False)
     wildcard_caller("bLah", "", False)
     wildcard_caller("bLah", "", False)
+
+
+def wildcard_caller_partial(text, pattern, expected):
+    # wildcard_match(pattern, text)
+    # use is here to make sure we acutally get True not a value that just evaluates to True
+    assert wildcard_match(pattern, text, partial_match=True) is expected
+
+
+def test_wildcard_matching_partial():
+    # Case with first wildcard after total match.
+    wildcard_caller_partial("foo/", "foo*.txt", True)
+    wildcard_caller_partial("foo/test.txt", "foo*.txt", True)
+    wildcard_caller_partial("foo/test.txt", "*", True)
+    wildcard_caller_partial("foo", "*", True)
+    wildcard_caller_partial("foo/bar/", "fo?/*", True)
+
+    wildcard_caller_partial("f_o/bar/", "fo?/*", False)
+    wildcard_caller_partial("foo/bar/", "foo/qux/*", False)
+    wildcard_caller_partial("foo/Qux/", "foo/qux/*", False)

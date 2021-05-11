@@ -5,8 +5,11 @@ import time
 import hashlib
 import logging
 import argparse
+import glob
 
 from logging.handlers import RotatingFileHandler
+
+from typing import Optional, List, Union, Sequence
 
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -72,7 +75,7 @@ def cli_yes_no(question_str):
             ans = input(f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
 
 
-def wildcard_match(pattern, text):
+def wildcard_match(pattern, text, partial_match=False):
     """
     Adapted and fixed version from: https://www.tutorialspoint.com/Wildcard-Pattern-Matching
     Original by Samual Sam
@@ -87,6 +90,7 @@ def wildcard_match(pattern, text):
     if m == 0:
         return n == 0
 
+    # i: index into text; j: index into pattern
     i, j = 0, 0
     text_ptr, pattern_ptr = -1, -1
     while i < n:
@@ -116,7 +120,7 @@ def wildcard_match(pattern, text):
         j += 1  # j will increase when wildcard is *
 
     # check whether pattern is finished or not
-    if j == m:
+    if j == m or partial_match:
         return True
     return False
 
@@ -279,7 +283,30 @@ def discover_hash_files(start_path, depth=2, exclude_pattern=None):
     return hashfiles
 
 
-def include_path(path, whitelist=None, blacklist=None):
+def descend_into(path: str, whitelist: Optional[List[str]]=None,
+                 blacklist: Optional[List[str]]=None) -> bool:
+    """
+    Tests whether to descend into a directory based on its path
+    expects that only one of white/blacklist is not None"""
+    descend = True
+    # NOTE: partial matches are only allowed for patterns in whitelist
+    # (partial blacklist pattern matches still mean we have to descend into
+    #  the matched dirpath e.g.: pattern: 'foo/bar/*.txt' dirpath: 'foo/bar/')
+    #  only an exact match excludes the dir -> pattern: 'foo/bar/*' dirpath: 'foo/bar/')
+    if whitelist and not any(wildcard_match(pat, path, partial_match=True) for pat in whitelist):
+        # if we have a whitelist only descend into dirs that match or partially match
+        # one of the whitelist patterns
+        descend = False
+    elif blacklist and any(wildcard_match(pat, path) for pat in blacklist):
+        # if we have a blacklist only descend into dirs that dont match one of the
+        # blacklisted patterns exactly
+        descend = False
+
+    return descend
+
+
+def include_path(path: str, whitelist: Optional[List[str]]=None,
+                 blacklist: Optional[List[str]]=None) -> bool:
     """expects that only one of white/blacklist is not None"""
     include = True
     if whitelist and not any(wildcard_match(pat, path) for pat in whitelist):
@@ -295,11 +322,14 @@ def include_path(path, whitelist=None, blacklist=None):
 
 
 class ChecksumHelper:
-    def __init__(self, root_dir, hash_filename_filter=None):
+
+    hash_filename_filter: Sequence[str]
+
+    def __init__(self, root_dir: str, hash_filename_filter: Optional[Union[str, Sequence[str]]]=None):
         self.root_dir = os.path.abspath(os.path.normpath(root_dir))
         self.root_dir_name = os.path.basename(self.root_dir)
 
-        self.all_hash_files = []
+        self.all_hash_files: List[Union[HashFile, MixedAlgoHashCollection]] = []
         # HashFile containing the most current hashes from all the combined hash
         # files that were found using discover_hash_files
         # -> also contains hashes for files that couldve been deleted
@@ -394,7 +424,11 @@ class ChecksumHelper:
                                                f"{time.strftime('%Y-%m-%d')}.{algo_name}"))
 
         for dirpath, dirnames, fnames in os.walk(start_path):
-            # TODO filter dirnames before traversing into them
+            # filter dirnames before traversing into them
+            dirnames[:] = [d for d in dirnames
+                           if descend_into(os.path.join(dirpath[len(self.root_dir) + 1:], d),
+                                           whitelist=whitelist, blacklist=blacklist)]
+
             for fname in fnames:
                 file_path = os.path.join(dirpath, fname)
                 # replace works here for computing the relpath since all paths share

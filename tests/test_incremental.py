@@ -5,7 +5,7 @@ import logging
 import time
 
 from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args
-from checksum_helper import ChecksumHelper, _cl_incremental
+from checksum_helper import ChecksumHelper, _cl_incremental, descend_into
 
 
 #                       filter, include unchanged
@@ -157,3 +157,32 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
         generated_sha_contents = read_file(os.path.join(root_dir, result_fn))
 
         assert(verified_sha_contents == generated_sha_contents)
+
+
+@pytest.mark.parametrize(
+    "path, whitelist, blacklist, expected",
+    [("foo/", [], [], True),
+     ("foo/", ["bar/*"], [], False),
+     ("bar/", ["bar/*"], [], True),
+     ("bar/", ["bar/*.txt"], [], True),
+     ("bar/", ["bar/baz/*.txt"], [], True),
+     ("bar/", ["bar/baz/xyz.txt"], [], True),
+     ("foo/", ["bar/*", "foo/*"], [], True),
+     ("foo/bar/", ["bar/*"], [], False),
+     ("foo/bar/", ["bar/*", "foo/*"], [], True),
+     ("foo/bar/", ["foo/bar/*"], [], True),
+     ("foo/bar/", ["foo/qux/*"], [], False),
+     ("foo/", [], ["foo/*"], False),
+     ("foo/", [], ["bar/*"], True),
+     ("foo/", [], ["bar/*", "foo/*"], False),
+     ("foo/", [], ["foo/bar/*"], True),
+     ("foo/", [], ["qux/*", "foo/bar/*"], True),
+     ("foo/", [], ["foo/bar/xyz.txt"], True),
+     ("foo/bar/", [], ["foo/bar/*"], False),
+     ("foo/bar/", [], ["foo/*", "foo/bar/*"], False),
+     ("foo/bar/", [], ["foo/bar/baz/*.txt"], True),
+     ("foo/bar/", [], ["foo/bar/baz/*.txt", "foo/bar/qux/xyz.txt"], True),
+     ("foo/bar/", [], ["foo/bar/xyz.txt"], True),
+    ])
+def test_descend_into(path, whitelist, blacklist, expected):
+    assert descend_into(path, whitelist=whitelist, blacklist=blacklist) is expected
