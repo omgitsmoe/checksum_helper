@@ -9,7 +9,7 @@ import glob
 
 from logging.handlers import RotatingFileHandler
 
-from typing import Optional, List, Union, Sequence
+from typing import Optional, List, Union, Sequence, Tuple
 
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -1096,10 +1096,9 @@ def _cl_move(args):
 
 
 def _cl_verify_all(args):
-    nr_crc_errors = 0
-    nr_missing = 0
-    nr_matches = 0
     files_total = 0
+    all_missing = []
+    all_failed_checksums = []
     # verify all found hashes of discovered hash files for all supplied paths
     for root_p in args.root_dir:
         c = ChecksumHelper(root_p, hash_filename_filter=args.hash_filename_filter)
@@ -1107,39 +1106,70 @@ def _cl_verify_all(args):
         c.build_most_current()
         # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
         crc_errors, missing, matches = c.hash_file_most_current.verify()
-        nr_crc_errors += len(crc_errors)
-        nr_missing += len(missing)
-        nr_matches += matches
+        all_missing.append((root_p, missing))
+        all_failed_checksums.append((root_p, crc_errors))
         files_total += len(c.hash_file_most_current.filename_hash_dict)
+
     print("\nVerified folders: %s" % (", ".join(args.root_dir),))
-    print("    SUMMARY:")
-    print("    TOTAL FILES:", files_total)
-    print("    MATCHES:", nr_matches)
-    print("    CRC ERRORS:", nr_crc_errors)
-    print("    MISSING:", nr_missing)
-    return files_total, nr_matches, nr_missing, nr_crc_errors
+    _print_summary(files_total, all_missing, all_failed_checksums)
+
+    nr_missing = sum(len(x[1]) for x in all_missing)
+    nr_failed_checksums = sum(len(x[1]) for x in all_failed_checksums)
+    return files_total, files_total - nr_missing - nr_failed_checksums, nr_missing, nr_failed_checksums
 
 
 def _cl_verify_hfile(args):
-    nr_crc_errors = 0
-    nr_missing = 0
-    nr_matches = 0
     files_total = 0
+    all_missing = []
+    all_failed_checksums = []
     for hash_file in args.hash_file_name:
         h = HashFile(None, hash_file)
         h.read()
         crc_errors, missing, matches = h.verify()
-        nr_crc_errors += len(crc_errors)
-        nr_missing += len(missing)
-        nr_matches += matches
+        all_missing.append((h.hash_file_dir, missing))
+        all_failed_checksums.append((h.hash_file_dir, crc_errors))
+
         files_total += len(h.filename_hash_dict)
+
     print("\nVerified hash files: %s" % (", ".join(args.hash_file_name),))
-    print("    SUMMARY:")
+    _print_summary(files_total, all_missing, all_failed_checksums)
+
+    nr_missing = sum(len(x[1]) for x in all_missing)
+    nr_failed_checksums = sum(len(x[1]) for x in all_failed_checksums)
+    return files_total, files_total - nr_missing - nr_failed_checksums, nr_missing, nr_failed_checksums
+
+
+def _print_summary(files_total: int, missing: List[Tuple[str, str]],
+                   failed_checksums: List[Tuple[str, str]]):
+
+    nr_missing = sum(len(x[1]) for x in missing)
+    nr_failed_checksums = sum(len(x[1]) for x in failed_checksums)
+
+    if any(x[1] for x in missing):
+        print("\nMISSING FILES:")
+        for root, fnames in missing:
+            if not fnames:
+                continue
+            print(f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> ", end="")
+            print(f"\n    |--> ".join(fnames))
+    else:
+        print("\nNO MISSING FILES!")
+
+    if any(x[1] for x in failed_checksums):
+        print("\nFAILED CHECKSUMS:")
+        for root, fnames in failed_checksums:
+            if not fnames:
+                continue
+            print(f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> ", end="")
+            print(f"\n    |--> ".join(fnames))
+    else:
+        print("\nNO FAILED CHECKSUMS!")
+
+    print("\nSUMMARY:")
     print("    TOTAL FILES:", files_total)
-    print("    MATCHES:", nr_matches)
-    print("    CRC ERRORS:", nr_crc_errors)
+    print("    MATCHES:", files_total - nr_missing - nr_failed_checksums)
+    print("    FAILED CHECKSUMS:", nr_failed_checksums)
     print("    MISSING:", nr_missing)
-    return files_total, nr_matches, nr_missing, nr_crc_errors
 
 
 def _cl_verify_filter(args):
@@ -1325,5 +1355,4 @@ if __name__ == "__main__":
         args.whitelist = [pat.replace(alt, os.sep) for pat in args.whitelist] if args.whitelist else None
         args.blacklist = [pat.replace(alt, os.sep) for pat in args.blacklist] if args.blacklist else None
 
-    print(args.whitelist, args.blacklist)
     args.func(args)
