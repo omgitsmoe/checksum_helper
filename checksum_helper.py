@@ -756,7 +756,7 @@ class HashFile:
                 # context manager doesnt work now so close file manually
                 af.close()
 
-        warned_abspath, warned_pardir_ref = False, False
+        warned_abspath, warned_pardir_ref, warned_invalid = False, False, False
         for ln in text.splitlines():
             # TODO(m): support text mode?
             # from GNU *sum utils:
@@ -766,7 +766,10 @@ class HashFile:
             try:
                 hash_str, file_path = ln.strip().split(" *", 1)
             except ValueError:
-                logger.warning("Invalid line in hash file: %s", self.get_path())
+                # TODO break here?
+                if not warned_invalid:
+                    logger.warning("There are invalid lines in hash file: %s", self.get_path())
+                    warned_invalid = True
                 continue
 
             # alert on abspath in file; we use abspath internally but only write
@@ -1152,11 +1155,23 @@ def _cl_verify_filter(args):
 # -> still match their checksums
 
 
+class SmartFormatter(argparse.HelpFormatter):
+    """Smart formatter that uses the RawTextFormatter if the help text begins with 'R|'
+       src: https://stackoverflow.com/a/22157136 by Anthon"""
+
+    def _split_lines(self, text, width):
+        if text.startswith('R|'):
+            return text[2:].splitlines()  
+        # this is the RawTextHelpFormatter._split_lines
+        return argparse.HelpFormatter._split_lines(self, text, width)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Combine discovered checksum files into "
                                                  "one with the most current checksums or "
                                                  "build a new incremental checksum file "
-                                                 "for the specified dir and all subdirs")
+                                                 "for the specified dir and all subdirs",
+                                                 formatter_class=SmartFormatter)
 
     # save name of used subcmd in var subcmd
     subparsers = parser.add_subparsers(title='subcommands', description='valid subcommands',
@@ -1172,8 +1187,8 @@ if __name__ == "__main__":
                                     "from search",
                                type=str)
     parent_parser.add_argument("-d", "--discover-hash-files-depth", default=-1, type=int,
-                               help="Number of subdirs to descend down to search for hash files; "
-                                    "0 -> root dir only, -1 -> max depth; Default: -1",
+                               help="R|Number of subdirs to descend down to search for hash files:\n"
+                                    " 0 -> root dir only\n-1 -> max depth\nDefault: -1",
                                metavar="DEPTH")
     parent_parser.add_argument("-v", "--verbosity", action="count", default=0,
                                help="increase output verbosity")
@@ -1181,8 +1196,10 @@ if __name__ == "__main__":
     incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser],
                                         help="Discover hash files in subdirectories and verify"
                                              " found hashes and creating new hashes for new "
-                                             "files! (So not truly incremental). New hashes "
-                                             "(or all) will be written to file!")
+                                             "files! (So not truly incremental). ATTENTION: Only "
+                                             "__new__ hashes will be written to file use "
+                                             "--include-unchagned to write all hashes!",
+                                        formatter_class=SmartFormatter)
     incremental.add_argument("path", type=str)
     incremental.add_argument("hash_algorithm", type=str)
     incremental.add_argument("-iu", "--include-unchanged", action="store_true",
@@ -1190,12 +1207,13 @@ if __name__ == "__main__":
     # only either white or blacklist can be used at the same time - not both
     inc_wl_or_bl = incremental.add_mutually_exclusive_group()
     inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
-                              help="Only file paths matching one of the wildcard patterns "
-                                   "will be hashed; Need to use / or \\ depending on os "
-                                   "they won't match each other", type=str)
+                              help="R|Only file paths matching one of the wildcard patterns "
+                                   "will be hashed\n"
+                                   "* -> Matches 0 or more chars (including / and \\\n"
+                                   "? -> Matches any one character (including / and \\)\n",
+                                   type=str)
     inc_wl_or_bl.add_argument("-bl", "--blacklist", nargs="+", metavar='PATTERN', default=None,
-                              help="Wildcard patterns matching file paths to exclude from hasing"
-                                   "; Need to use / or \\ depending on os they won't match each other",
+                              help="Wildcard patterns matching file paths to exclude from hashing",
                               type=str)
     incremental.add_argument("--per-directory", action="store_true", default=False,
                              help="Create one hash file per __top-level__ directory")
@@ -1301,4 +1319,11 @@ if __name__ == "__main__":
     elif args.verbosity >= 2:
         stdohandler.setLevel(LOG_LVL_EXTRAVERBOSE)
 
+    if hasattr(args, "whitelist"):
+        # replace non-standard path separator with os.sep so users can use both
+        alt = '/' if os.sep == '\\' else '\\'
+        args.whitelist = [pat.replace(alt, os.sep) for pat in args.whitelist] if args.whitelist else None
+        args.blacklist = [pat.replace(alt, os.sep) for pat in args.blacklist] if args.blacklist else None
+
+    print(args.whitelist, args.blacklist)
     args.func(args)
