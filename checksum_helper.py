@@ -8,6 +8,7 @@ import argparse
 import glob
 import binascii
 import datetime
+import enum
 
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
@@ -69,7 +70,7 @@ stdohandler.setFormatter(formatterstdo)
 logger.addHandler(stdohandler)
 
 
-def cli_yes_no(question_str):
+def cli_yes_no(question_str: str) -> bool:
     ans = input(f"{question_str} y/n:\n")
     while True:
         if ans == "n":
@@ -80,7 +81,7 @@ def cli_yes_no(question_str):
             ans = input(f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
 
 
-def wildcard_match(pattern, text, partial_match=False):
+def wildcard_match(pattern: str, text: str, partial_match: bool = False) -> bool:
     """
     Adapted and fixed version from: https://www.tutorialspoint.com/Wildcard-Pattern-Matching
     Original by Samual Sam
@@ -130,7 +131,7 @@ def wildcard_match(pattern, text, partial_match=False):
     return False
 
 
-def split_path(path_str):
+def split_path(path_str: str) -> Tuple[Optional[List[str]], Optional[str]]:
     result = []
     sep = ('/', '\\')
     if path_str[0] == '/':
@@ -161,7 +162,7 @@ def split_path(path_str):
     return result, filename
 
 
-def move_fpath(abspath, mv_path):
+def move_fpath(abspath: str, mv_path: str) -> Optional[str]:
     """
     C:\\test1\\test2\\test.txt, ..\\test3\\ -> C:\\test1\\test3\\test.txt
     C:\\test1\\test2\\test.txt, ..\\test3\\test_mv.txt -> C:\\test1\\test3\\test_mv.txt
@@ -206,16 +207,16 @@ def move_fpath(abspath, mv_path):
         return os.sep.join(curr_path)
 
 
-# _hex = ... so we use the default _hex=True when omitting _hex
+# _hex = ... so we use the default _hex=False when omitting _hex
 @overload
 def gen_hash_from_file(fname: str, hash_algo_str: str,
-                       _hex: Literal[True] = ...) -> Optional[str]: ...
+                       _hex: Literal[False] = ...) -> Optional[str]: ...
 
 @overload
 def gen_hash_from_file(fname: str, hash_algo_str: str,
-                       _hex: Literal[False]) -> Optional[bytes]: ...
+                       _hex: Literal[True]) -> Optional[str]: ...
 
-def gen_hash_from_file(fname: str, hash_algo_str: str, _hex: bool=True) -> Optional[Union[str, bytes]]:
+def gen_hash_from_file(fname: str, hash_algo_str: str, _hex: bool=False) -> Optional[Union[str, bytes]]:
     # construct a hash object by calling the appropriate constructor function
     hash_obj = hashlib.new(hash_algo_str)
     try:
@@ -252,13 +253,15 @@ def build_hashfile_str(filename_hash_pairs: Iterable[Tuple[str, str]]) -> str:
     return "\n".join(final_str_ln) + '\n'
 
 
+# TODO replace with hashlib.algorithms_available or _guaranteed
 HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
 # forgot the comma again for single value tuple!!!!!!
 # dirs starting with a substring in the tuple below will not be searched for hash files
 DIR_START_STR_EXCLUDE = (".git",)
 
 
-def discover_hash_files(start_path: str, depth: int = 2, exclude_pattern: Optional[Sequence[str]]=None):
+def discover_hash_files(start_path: str, depth: int = 2,
+                        exclude_pattern: Optional[Sequence[str]]=None) -> List[str]:
     if exclude_pattern is None:
         exclude_pattern = ()
 
@@ -353,11 +356,11 @@ class ChecksumHelper:
         self.root_dir: str = os.path.abspath(os.path.normpath(root_dir))
         self.root_dir_name: str = os.path.basename(self.root_dir)
 
-        self.all_hash_files: List[HashFile] = []
+        self.all_hash_files: List[ChecksumHelperData] = []
         # HashFile containing the most current hashes from all the combined hash
         # files that were found using discover_hash_files
         # -> also contains hashes for files that couldve been deleted
-        self.hash_file_most_current: Optional[Union[HashFile, MixedAlgoHashCollection]] = None
+        self.hash_file_most_current: Optional[ChecksumHelperData] = None
 
         # susbtrings that cant be in filename of hash file
         if hash_filename_filter is None:
@@ -377,7 +380,7 @@ class ChecksumHelper:
         hash_files = discover_hash_files(self.root_dir,
                                          depth=self.options["discover_hash_files_depth"],
                                          exclude_pattern=self.hash_filename_filter)
-        self.all_hash_files = [HashFile(self, hfile_path) for hfile_path in hash_files]
+        self.all_hash_files = [ChecksumHelperData(self, hfile_path) for hfile_path in hash_files]
 
     def read_all_hash_files(self) -> None:
         if not self.all_hash_files:
@@ -690,26 +693,25 @@ class ChecksumHelper:
             hash_file.write(force=True)
 
 
-class HashFile:
+class ChecksumHelperData:
 
     hash_file_dir: str
     filename: str
 
-    def __init__(self, handling_checksumhelper, path_to_hash_file):
+    def __init__(self, handling_checksumhelper, path_to_hash_file: str):
         self.handling_checksumhelper: ChecksumHelper = handling_checksumhelper
         # store location of file (or use filename to build loc)
         # so we can build the path to files from root_dir correctly
         # from path in hash file
         # make sure we get an absolute path
-        self.hash_file_dir, self.filename = os.path.split(
+        self.root_dir, self.filename = os.path.split(
                 os.path.normpath(os.path.abspath(path_to_hash_file)))
-        # i dont thik ill ever need this
-        # self.hash_filename_dict = {}
-        self.filename_hash_dict: Dict[str, str] = {}
+        # filename -> HashedFile (filename is an absolute and normalized path)
+        self.entries: Dict[str, HashedFile] = {}
         self.mtime: Optional[float] = None
-        # path to dir of hash file -> relpath from self.handling_checksumhelper.root_dir
-        # since we set cwd to self.handling_checksumhelper.root_dir
-        self.hash_type: str = self.filename.rsplit(".", 1)[-1]
+        ext = os.path.splitext(self.filename)
+        # whether only one type of hash alogrithm is used
+        self.single_hash: bool = False if not ext or ext == ".cshd" else True
 
     def __eq__(self, other):
         """
@@ -721,13 +723,13 @@ class HashFile:
             return False
 
     def __contains__(self, file_path: str) -> bool:
-        return os.path.normpath(file_path) in self.filename_hash_dict
+        return os.path.normpath(file_path) in self.entries
 
     def __iter__(self):
-        return iter(self.filename_hash_dict)
+        return iter(self.entries)
 
     def __len__(self):
-        return len(self.filename_hash_dict)
+        return len(self.entries)
 
     def __delitem__(self, file_path: str) -> bool:
         """
@@ -737,14 +739,14 @@ class HashFile:
         :return: Tuple of hash in hex and name of used hash algorithm
         """
         try:
-            # filename_hash_dict uses normalized paths as keys
-            del self.filename_hash_dict[os.path.normpath(file_path)]
+            # self.entries uses normalized abspaths as keys
+            del self.entries[os.path.normpath(file_path)]
         except KeyError:
             return False
         else:
             return True
 
-    def get_hash_by_file_path(self, file_path: str) -> Tuple[Optional[str], Optional[str]]:
+    def get_hash_by_file_path(self, file_path: str) -> Optional[HashedFile]:
         """
         Pass in file_path (normalized here using normpath) to get stored hash for
         that path
@@ -753,14 +755,14 @@ class HashFile:
         :param file_path: Absolute path to hashed file
         :return: Tuple of hash in hex and name of used hash algorithm
         """
-        # filename_hash_dict uses normalized paths as keys
+        # self.entries uses normalized abspaths as keys
         file_path = os.path.normpath(file_path)
         try:
-            return self.filename_hash_dict[file_path], self.hash_type
+            return self.entries[file_path]
         except KeyError:
-            return None, None
+            return None
 
-    def set_hash_for_file(self, file_path: str, hash_str: str):
+    def set_hash_for_file(self, file_path: str, hashed_file: HashedFile) -> None:
         """
         Sets hash value in HashFile for specified file_path
 
@@ -768,12 +770,66 @@ class HashFile:
                           gets normalized here
         :param hash_str:  Hex-string representation of file hash
         """
-        self.filename_hash_dict[os.path.normpath(file_path)] = hash_str
+        self.entries[os.path.normpath(file_path)] = hashed_file
 
     def get_path(self) -> str:
-        return os.path.join(self.hash_file_dir, self.filename)
+        return os.path.join(self.root_dir, self.filename)
 
     def read(self) -> None:
+        with open(self.get_path(), "r", encoding="UTF-8") as f:
+            text = f.read()
+
+        warned_pardir_ref = False
+        for ln in text.splitlines():
+            stripped = ln.strip()
+
+            mtime = None
+            size = None
+            try:
+                mtime_end = stripped.index(" ")
+                if mtime_end != 0:
+                    mtime = float(stripped[:mtime_end])
+
+                size_end = stripped.index(" ", mtime_end + 1)
+                if size_end != mtime_end + 1:
+                    size = int(stripped[mtime_end + 1:size_end])
+
+                hash_type_end = stripped.index(" ", size_end + 1)
+                hash_type = stripped[size_end + 1:hash_type_end]
+
+                hash_str_end = stripped.index(" ", hash_type_end + 1)
+                hash_str = stripped[hash_type_end + 1:hash_str_end]
+
+                file_path = stripped[hash_str_end + 1:]
+            except (ValueError, IndexError):
+                logger.warning("Read failed: there were invalid lines in cshd file '%s'. ",
+                               self.get_path())
+                return
+
+            # alert on abspath in file; we use abspath internally but only write
+            # relative paths to file
+            if os.path.isabs(file_path):
+                logger.warning("Read failed! Found absolute path in hash file: %s", self.get_path())
+                # even if drive letters match: drives could be from different computers
+                # or could have been remounted
+                return
+            else:
+                if not warned_pardir_ref and '..' + os.sep in os.path.normpath(file_path):
+                    logger.warning("Found reference beyond the hash file's root dir in file: '%s'. "
+                                   "Consider moving/copying the file using ChecksumHelper move/copy "
+                                   "to the path that is the most common denominator!",
+                                   self.get_path())
+                    warned_pardir_ref = True
+
+            # use normpath here to ensure that paths get normalized
+            # since we use them as keys
+            abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
+            self.entries[abs_normed_path] = HashedFile(
+                    abs_normed_path, mtime, size,
+                    hash_type, binascii.a2b_hex(hash_str), False)
+
+    def read_from_single_hash_file(self) -> None:
+        hash_type = self.filename.rsplit(".", 1)[1]
         self.mtime = os.stat(self.get_path()).st_mtime
         # first line had \ufeff which is the BOM for utf-8 with bom
         with open(self.get_path(), "r", encoding="UTF-8-SIG") as f:
@@ -794,35 +850,45 @@ class HashFile:
                 # context manager doesnt work now so close file manually
                 af.close()
 
-        warned_abspath, warned_pardir_ref, warned_invalid = False, False, False
+        warned_pardir_ref = False
         for ln in text.splitlines():
-            # TODO(m): support text mode?
             # from GNU *sum utils:
             # default mode is to print a line with checksum, a character
             # indicating input mode ('*' for binary, space for text), and name
             # for each FILE.
+            # NOTE: according to the manpage there is no difference between binary and
+            # text mode on a GNU system (same is true for fopen from the C stdlib:
+            # The character 'b' shall have no effect, but is allowed for ISO C standard conformance)
+            stripped = ln.strip()
+
             try:
-                hash_str, file_path = ln.strip().split(" *", 1)
-            except ValueError:
-                # TODO break here?
-                if not warned_invalid:
-                    logger.warning("There are invalid lines in hash file: %s", self.get_path())
-                    warned_invalid = True
-                continue
+                first_space = stripped.index(" ")
+                hash_str = stripped[:first_space]
+                space_or_asterisk = stripped[first_space + 1]
+                file_path = stripped[first_space + 2:]
+            except (ValueError, IndexError):
+                logger.warning("Read failed: there were invalid lines in hash file '%s'. "
+                               "The correct format is:\n"
+                               "[0-9a-fA-F]+ ( |*)[^/]+", self.get_path())
+                return
+
+            if space_or_asterisk == " ":
+                text_mode = True
+            elif space_or_asterisk == "*":
+                text_mode = False
+            else:
+                logger.warning(
+                    "Read failed: Expected either '*' or ' ' got '%s' in file %s",
+                    space_or_asterisk, self.get_path())
+                return
 
             # alert on abspath in file; we use abspath internally but only write
             # relative paths to file
             if os.path.isabs(file_path):
-                if not warned_abspath:
-                    logger.warning("Found absolute path in hash file: %s", self.get_path())
-                    warned_abspath = True
-                # if drive letters dont match abort and let user handle this manually
-                if (os.path.splitdrive(self.get_path())[0].lower() !=
-                        os.path.splitdrive(file_path)[0].lower()):
-                    raise AbspathDrivesDontMatch(
-                            "Drive letters of the hash file "
-                            f"'{os.path.abspath(self.get_path())}' and the absolute path "
-                            f"'{file_path}' don't match! This needs to be fixed manually!")
+                logger.warning("Read failed! Found absolute path in hash file: %s", self.get_path())
+                # even if drive letters match: drives could be from different computers
+                # or could have been remounted
+                return
             else:
                 if not warned_pardir_ref and '..' + os.sep in os.path.normpath(file_path):
                     logger.warning("Found reference beyond the hash file's root dir in file: '%s'. "
@@ -834,10 +900,12 @@ class HashFile:
 
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
-            abs_normed_path = os.path.normpath(os.path.join(self.hash_file_dir, file_path))
-            self.filename_hash_dict[abs_normed_path] = hash_str
+            abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
+            self.entries[abs_normed_path] = HashedFile(
+                    abs_normed_path, None, None,
+                    hash_type, binascii.a2b_hex(hash_str), text_mode)
 
-    def write(self, force=False) -> bool:
+    def _check_write_file(self, force=False) -> bool:
         write_file = False
         if os.path.exists(self.get_path()) and not force:
             inp = input(f"Do you want to overwrite {self.get_path()} or should "
@@ -846,27 +914,85 @@ class HashFile:
                 write_file = True
             elif inp == "ren" or inp == "rename":
                 write_file = True
+                # splitext includes . in the extension part!!
                 fn, ext = os.path.splitext(self.filename)
                 # date is already ISO 8601 add time as well omitting ':' since it's a banned
                 # char for windows filenames
-                self.filename = f"{fn}T{time.strftime('%H%M%S')}.{ext}"
+                self.filename = f"{fn}T{time.strftime('%H%M%S')}{ext}"
         else:
             write_file = True
 
-        # convert absolute paths to paths that are relative to the hash file location
-        abs_filename_hash_dict = {os.path.relpath(fp, start=self.hash_file_dir): hash_str
-                                  for fp, hash_str in self.filename_hash_dict.items()}
-        hashfile_str = build_hashfile_str(abs_filename_hash_dict.items())
-        # TotalCommander needs UTF-8 BOM for checksum files so use UTF-8-SIG
+        return write_file
+
+    def write(self, force=False) -> bool:
+        write_file = self._check_write_file(force)
+        if not write_file:
+            return False
+
+        root_dir = self.root_dir
+        lines = []
+        for file_path, hashed_file in self.entries.items():
+            mode_char = ' ' if hashed_file.text_mode else '*'
+            lines.append(
+                f"{hashed_file.mtime_str() if hashed_file.mtime is not None else ''},"
+                f"{hashed_file.size if hashed_file.size is not None else ''},"
+                f"{hashed_file.hash_type},"
+                f"{hashed_file.hex_hash()} {mode_char}{hashed_file.filename}")
+
+        with open(self.get_path(), "w", encoding="UTF-8") as w:
+            w.write("\n".join(lines))
+
+        return True
+
+    def write_as_single_hash_file(self, force=False) -> bool:
+        write_file = self._check_write_file(force)
+        if not write_file:
+            return False
+
+        convert_algo_name = None
+        if not self.single_hash:
+            print("File contains multiple hash algorithms but is supposed to be "
+                  "written as conventional single hash file (*.md5, *.sha512 etc.).\n"
+                  "Guaranteed (on every python platform) hash algorithm names (RECOMMENDED):\n"
+                  f"{', '.join(hashlib.algorithms_available)}\n"
+                  "Additionally available hash algorithm names:\n"
+                  f"{', '.join(hashlib.algorithms_available - hashlib.algorithms_guaranteed)}\n")
+            while convert_algo_name not in hashlib.algorithms_available:
+                convert_algo_name = input(
+                    "\nEnter a hash algorithm name that all files should be re-hashed to:").strip()
+
+        root_dir = self.root_dir
+        lines = []
+        single_hash = self.single_hash
+        for file_path, hashed_file in self.entries.items():
+            # convert absolute paths to paths that are relative to the hash file location
+            rel_file_path = os.path.relpath(file_path, start=root_dir)
+
+            if not single_hash and hashed_file.hash_type != convert_algo_name:
+                # verify stored hash using old algo still matches
+                new_hash = gen_hash_from_file(file_path, hashed_file.hash_type)
+                if new_hash != hashed_file.hash_bytes:
+                    logger.warning("File %s doesnt match most current hash: %s!",
+                                   file_path, hashed_file.hex_hash())
+
+                new_hash_hex = gen_hash_from_file(file_path, cast(str, convert_algo_name), True)
+
+                lines.append(
+                    f"{new_hash_hex} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
+            else:
+                lines.append(
+                    f"{hashed_file.hex_hash()} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
+
+        # older version of TotalCommander need UTF-8 BOM for checksum files so use UTF-8-SIG
         with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
-            w.write(hashfile_str)
+            w.write("\n".join(lines))
 
         return write_file
 
     def relocate(self, mv_path: str) -> Tuple[Optional[str], Optional[str]]:
         # error when trying to move to diff drive
         if os.path.isabs(mv_path) and (
-                os.path.splitdrive(self.hash_file_dir)[0].lower() !=
+                os.path.splitdrive(self.root_dir)[0].lower() !=
                 os.path.splitdrive(mv_path)[0].lower()):
             logger.error("Can't move hash file to a different drive than the files it contains "
                          "hashes for!")
@@ -880,152 +1006,45 @@ class HashFile:
 
         # we dont need to modify our file paths in self.filename_hash_dict since
         # we're using absolute paths anyway
-        self.hash_file_dir, self.filename = new_hash_file_dir, new_filename
+        self.root_dir, self.filename = new_hash_file_dir, new_filename
         return new_hash_file_dir, new_filename
     
     def copy_to(self, mv_path: str) -> None:
+        bu_root, bu_fn = self.root_dir, self.filename
         new_hash_file_dir, new_filename = self.relocate(mv_path)
-        if new_hash_file_dir is not None and self.write(force=True):
+        written = False
+        if new_hash_file_dir is not None:
+            if self.single_hash:
+                written = self.write_as_single_hash_file()
+            else:
+                written = self.write()
+
+        if written:
             logger.info("Copied hash file to %s",
-                        os.path.join(new_hash_file_dir, cast(str, new_filename)))
+                        os.path.join(cast(str, new_hash_file_dir), cast(str, new_filename)))
         else:
             logger.warning("Hash file was NOT copied!")
 
-    def update_from_dict(self, update_dict: Dict[str, str]):
-        self.filename_hash_dict.update(update_dict)
+        # restore old path
+        self.root_dir, self.filename = bu_root, bu_fn
+
+    def update_from_dict(self, update_dict: Dict[str, HashedFile]):
+        self.entries.update(update_dict)
 
     def filter_deleted_files(self) -> None:
-        self.filename_hash_dict = {fname: hash_str for fname, hash_str
-                                   in self.filename_hash_dict.items() if os.path.isfile(fname)}
-
-    def verify(self, whitelist: Optional[Sequence[str]]=None) -> Tuple[List[str], List[str], int]:
-        crc_errors: List[str] = []
-        missing: List[str] = []
-        matches = 0
-        if not self.filename_hash_dict:
-            logger.info("There were no hashes to verify!")
-            return crc_errors, missing, matches
-
-        for fpath, expected_hash in self.filename_hash_dict.items():
-            # relative path for reporting and whitelisting
-            # we have to use os.path.relpath even if its slow but replace fails if we have
-            # relpaths that reference files in the pardir or up
-            rel_fpath = os.path.relpath(fpath, start=self.hash_file_dir)
-            if whitelist:
-                # skip file if we have a whitelist and there's no match
-                if not any(wildcard_match(pattern, rel_fpath) for pattern in whitelist):
-                    continue
-
-            current = gen_hash_from_file(fpath, self.hash_type)
-            if current is None:
-                missing.append(rel_fpath)
-                logger.warning("%s: MISSING", rel_fpath)
-            elif expected_hash == current:
-                matches += 1
-                logger.info("%s: OK", rel_fpath)
-            else:
-                crc_errors.append(rel_fpath)
-                logger.warning("%s: FAILED", rel_fpath)
-
-        hf_path = os.path.join(self.hash_file_dir, self.filename)
-        if matches and not crc_errors and not missing:
-            logger.info("%s: No missing files and all files matching their hashes", hf_path)
-        else:
-            if matches and not crc_errors:
-                logger.info("%s: All files matching their hashes!", hf_path)
-            else:
-                logger.warning("%s: %d files with wrong CRCs!", hf_path, len(crc_errors))
-            if not missing:
-                logger.info("%s: No missing files!", hf_path)
-            else:
-                logger.warning("%s: %d missing files!", hf_path, len(missing))
-        return crc_errors, missing, matches
-
-
-class MixedAlgoHashCollection:
-    def __init__(self, handling_checksumhelper):
-        self.handling_checksumhelper: ChecksumHelper = handling_checksumhelper
-        self.root_dir: str = self.handling_checksumhelper.root_dir
-        self.filename_hash_dict: Dict[str, Tuple[str, str]] = {}
-
-    def __contains__(self, file_path: str) -> bool:
-        return os.path.normpath(file_path) in self.filename_hash_dict
-
-    def __iter__(self):
-        return iter(self.filename_hash_dict)
-
-    def __len__(self):
-        return len(self.filename_hash_dict)
-
-    def __delitem__(self, file_path: str) -> bool:
-        """
-        Pass in file_path (normalized here using normpath) to delete hash from hash file
-
-        :param file_path: Absolute path to hashed file
-        :return: Tuple of hash in hex and name of used hash algorithm
-        """
-        try:
-            # filename_hash_dict uses normalized paths as keys
-            del self.filename_hash_dict[os.path.normpath(file_path)]
-        except KeyError:
-            return False
-        else:
-            return True
-
-    def set_hash_for_file(self, algo: str, file_path: str, hash_str: str) -> None:
-        """
-        Sets hash value in HashFile for specified file_path
-
-        :param algo: Name string of used hash algorithm
-        :param file_path: Absolute path to file
-                          gets normalized here
-        :param hash_str:  Hex-string representation of file hash
-        """
-        self.filename_hash_dict[os.path.normpath(file_path)] = (hash_str, algo)
-
-    def get_hash_by_file_path(self, file_path: str) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Pass in file_path (normalized here using normpath) to get stored hash for
-        that path
-        KeyError -> None
-
-        :param file_path: Absolute path to file
-        :return: Tuple of hash in hex and name of used hash algorithm
-        """
-        # filename_hash_dict uses normalized paths as keys
-        file_path = os.path.normpath(file_path)
-        try:
-            return self.filename_hash_dict[file_path]
-        except KeyError:
-            return None, None
-
-    def to_single_hash_file(self, name: str, convert_algo_name: str) -> HashFile:
-        most_current_single = HashFile(self.handling_checksumhelper, name)
-        # file_path is key and use () to also unpack value which is a 2-tuple
-        for file_path, (hash_str, algo_name) in self.filename_hash_dict.items():
-            if algo_name != convert_algo_name:
-                # verify stored hash using old algo still matches
-                new_hash = gen_hash_from_file(file_path, algo_name)
-                if new_hash != hash_str:
-                    logger.warning("File %s doesnt match most current hash: %s!", file_path, hash_str)
-                new_hash = gen_hash_from_file(file_path, convert_algo_name)
-
-                most_current_single.set_hash_for_file(file_path, new_hash)
-            else:
-                most_current_single.set_hash_for_file(file_path, hash_str)
-
-        return most_current_single
+        self.entries = {fname: hash_str for fname, hash_str in self.entries.items()
+                        if os.path.isfile(fname)}
 
     def verify(self, whitelist: Optional[Sequence[str]]=None) -> Tuple[List[str], List[str], int]:
         # @Duplicate almost duplicate of HashFile.verify
         crc_errors: List[str] = []
         missing: List[str] = []
         matches = 0
-        if not self.filename_hash_dict:
+        if not self.entries:
             logger.info("There were no hashes to verify!")
             return crc_errors, missing, matches
 
-        for fpath, (expected_hash, hash_algo) in self.filename_hash_dict.items():
+        for fpath, hashed_file in self.entries.items():
             # relative path for reporting and whitelisting
             # we have to use os.path.relpath even if its slow but replace fails if we have
             # relpaths that reference files in the pardir or up
@@ -1035,16 +1054,16 @@ class MixedAlgoHashCollection:
                 if not any(wildcard_match(pattern, rel_fpath) for pattern in whitelist):
                     continue
 
-            current = gen_hash_from_file(fpath, hash_algo)
+            current = gen_hash_from_file(fpath, hashed_file.hash_type)
             if current is None:
                 missing.append(rel_fpath)
                 logger.warning("%s: MISSING", rel_fpath)
-            elif expected_hash == current:
+            elif hashed_file.hash_bytes == current:
                 matches += 1
-                logger.info("%s: %s OK", rel_fpath, hash_algo.upper())
+                logger.info("%s: %s OK", rel_fpath, hashed_file.hash_type.upper())
             else:
                 crc_errors.append(rel_fpath)
-                logger.warning("%s: %s FAILED", rel_fpath, hash_algo.upper())
+                logger.warning("%s: %s FAILED", rel_fpath, hashed_file.hash_type.upper())
 
         if matches and not crc_errors and not missing:
             logger.info("No missing files and all files matching their hashes")
@@ -1058,6 +1077,57 @@ class MixedAlgoHashCollection:
             else:
                 logger.warning("%d missing files!", len(missing))
         return crc_errors, missing, matches
+
+
+class HashType(enum.Enum):
+    MD4 = 0  # not part of hashlib.algorithms_guaranteed
+    MD5 = enum.auto()
+    SHA1 = enum.auto()
+    SHA224 = enum.auto()
+    SHA256 = enum.auto()
+    SHA384 = enum.auto()
+    SHA512 = enum.auto()
+    BLAKE2B = enum.auto()
+    BLAKE2S = enum.auto()
+    SHAKE_128 = enum.auto()
+    SHAKE_256 = enum.auto()
+    SHA3_224 = enum.auto()
+    SHA3_256 = enum.auto()
+    SHA3_384 = enum.auto()
+    SHA3_512 = enum.auto()
+    # algorithms_available
+    # ripemd160
+    # whirlpool
+
+
+@dataclass
+class HashedFile:
+    __slots__ = ['filename', 'mtime', 'size', 'hash_type', 'hash_bytes', 'text_mode']
+
+    # absolute path!
+    filename: str
+    mtime: Optional[float]
+    # in bytes
+    size:   Optional[int]
+    hash_type: str
+    hash_bytes: bytes
+    # for compatability reasons
+    text_mode: bool
+
+    def hex_hash(self) -> str:
+        # b2a_hex returns bytes string -> have to decode it as utf-8 to count as str
+        return binascii.b2a_hex(self.hash_bytes).decode('utf-8')
+
+    def mtime_str(self) -> Optional[str]:
+        if self.mtime is None:
+            return None
+        else:
+            return datetime.datetime.fromtimestamp(self.mtime).isoformat()
+
+    def fetch_mtime_and_size(self) -> None:
+        stat = os.stat(self.filename)
+        self.mtime = stat.st_mtime
+        self.size = stat.st_size
 
 
 class AbspathDrivesDontMatch(Exception):
