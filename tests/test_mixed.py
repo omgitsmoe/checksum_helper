@@ -5,7 +5,7 @@ import pytest
 
 from utils import TESTS_DIR, setup_tmpdir_param, Args
 
-from checksum_helper import split_path, move_fpath, HashFile, gen_hash_from_file, ChecksumHelper, AbspathDrivesDontMatch, _cl_copy, discover_hash_files
+from checksum_helper import split_path, move_fpath, HashedFile, gen_hash_from_file, ChecksumHelper, AbspathDrivesDontMatch, _cl_copy, discover_hash_files
 
 
 @pytest.mark.parametrize(

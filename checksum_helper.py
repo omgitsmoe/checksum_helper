@@ -16,7 +16,7 @@ from logging.handlers import RotatingFileHandler
 
 from typing import (
     Optional, List, Union, Sequence, Tuple, overload, Literal, Iterable, cast,
-    Dict, TypedDict
+    Dict, TypedDict, Set
 )
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -379,6 +379,7 @@ class ChecksumHelper:
         }
 
     def discover_hash_files(self) -> None:
+        print("filter:", self.hash_filename_filter)
         hash_files = discover_hash_files(self.root_dir,
                                          depth=self.options["discover_hash_files_depth"],
                                          exclude_pattern=self.hash_filename_filter)
@@ -399,8 +400,15 @@ class ChecksumHelper:
             self.read_all_hash_files()
 
         self.sort_hash_files_by_mtime()
-        all_single_hash = all(x.single_hash for x in self.all_hash_files)
-        if all_single_hash:
+        all_single_hash = True
+        hash_types: Set[str] = set()
+        for hf in self.all_hash_files:
+            if not hf.single_hash:
+                all_single_hash = False
+                break
+            hash_types.add(cast(str, hf.hash_type))
+
+        if all_single_hash and len(hash_types) == 1:
             filename = os.path.join(
                 self.root_dir,
                 f"{self.root_dir_name}_most_current_"
@@ -419,7 +427,7 @@ class ChecksumHelper:
                 # since we add hashes from different files we have to combine the realtive
                 # path IN the hashfile with the path TO the hashfile
                 # to get a correct path
-                combined_path = os.path.normpath(os.path.join(cshd.hash_file_dir, file_path))
+                combined_path = os.path.normpath(os.path.join(cshd.root_dir, file_path))
                 most_current.set_entry(
                     combined_path,
                     HashedFile(
@@ -496,9 +504,9 @@ class ChecksumHelper:
     def _build_verfiy_hash(
             self, file_path: str, algo_name: str,
             rehash_other_types: bool = True, collect_fstat: bool = True,
-            skip_unchanged: bool = False) -> Tuple[bool, Optional[HashedFile]]:
+            skip_unchanged: bool = False) -> Tuple[bool, Optional['HashedFile']]:
         # NOTE: assumes self.hash_file_most_current is not None
-        new: Optional[HashedFile] = None
+        new: Optional['HashedFile'] = None
         include = False
         # fpath is an absolute path
         old = cast(ChecksumHelperData, self.hash_file_most_current).get_entry(file_path)
@@ -749,7 +757,7 @@ class ChecksumHelper:
 
 class ChecksumHelperData:
 
-    hash_file_dir: str
+    root_dir: str
     filename: str
 
     def __init__(self, handling_checksumhelper, path_to_hash_file: str):
@@ -760,10 +768,10 @@ class ChecksumHelperData:
         # make sure we get an absolute path
         self.root_dir, self.filename = os.path.split(
                 os.path.normpath(os.path.abspath(path_to_hash_file)))
-        # filename -> HashedFile (filename is an absolute and normalized path)
-        self.entries: Dict[str, HashedFile] = {}
+        # filename -> 'HashedFile' (filename is an absolute and normalized path)
+        self.entries: Dict[str, 'HashedFile'] = {}
         self.mtime: Optional[float] = None
-        ext = os.path.splitext(self.filename)
+        _, ext = os.path.splitext(self.filename)
         # whether only one type of hash alogrithm is used
         self.single_hash: bool = False if not ext or ext == ".cshd" else True
         # None if self.single_hash is False
@@ -802,7 +810,7 @@ class ChecksumHelperData:
         else:
             return True
 
-    def get_entry(self, file_path: str) -> Optional[HashedFile]:
+    def get_entry(self, file_path: str) -> Optional['HashedFile']:
         """
         Pass in file_path (normalized here using normpath) to get stored hash for
         that path
@@ -818,7 +826,7 @@ class ChecksumHelperData:
         except KeyError:
             return None
 
-    def set_entry(self, file_path: str, hashed_file: HashedFile) -> None:
+    def set_entry(self, file_path: str, hashed_file: 'HashedFile') -> None:
         """
         Sets hash value in HashFile for specified file_path
 
@@ -832,6 +840,12 @@ class ChecksumHelperData:
         return os.path.join(self.root_dir, self.filename)
 
     def read(self) -> None:
+        if self.single_hash:
+            self._read_from_single_hash_file()
+        else:
+            self._read()
+
+    def _read(self) -> None:
         try:
             self.mtime = os.stat(self.get_path()).st_mtime
         except (FileNotFoundError, PermissionError):
@@ -848,16 +862,12 @@ class ChecksumHelperData:
             mtime = None
             size = None
             try:
-                mtime_end = stripped.index(" ")
+                mtime_end = stripped.index(",")
                 if mtime_end != 0:
                     mtime = float(stripped[:mtime_end])
 
-                size_end = stripped.index(" ", mtime_end + 1)
-                if size_end != mtime_end + 1:
-                    size = int(stripped[mtime_end + 1:size_end])
-
-                hash_type_end = stripped.index(" ", size_end + 1)
-                hash_type = stripped[size_end + 1:hash_type_end]
+                hash_type_end = stripped.index(",", mtime_end + 1)
+                hash_type = stripped[mtime_end + 1:hash_type_end]
 
                 hash_str_end = stripped.index(" ", hash_type_end + 1)
                 hash_str = stripped[hash_type_end + 1:hash_str_end]
@@ -890,7 +900,7 @@ class ChecksumHelperData:
                     abs_normed_path, mtime, size,
                     hash_type, binascii.a2b_hex(hash_str), False)
 
-    def read_from_single_hash_file(self) -> None:
+    def _read_from_single_hash_file(self) -> None:
         hash_type = self.hash_type
         try:
             self.mtime = os.stat(self.get_path()).st_mtime
@@ -991,7 +1001,17 @@ class ChecksumHelperData:
 
         return write_file
 
-    def write(self, force=False) -> bool:
+    def write(self, force: bool = False) -> bool:
+        _, ext = os.path.splitext(self.filename)
+        if ext == ".cshd":
+            return self._write(force)
+        elif not ext:
+            self.filename += ".cshd"
+            return self._write(force)
+        else:
+            return self._write_as_single_hash_file(force)
+
+    def _write(self, force=False) -> bool:
         write_file = self._check_write_file(force)
         if not write_file:
             return False
@@ -999,36 +1019,21 @@ class ChecksumHelperData:
         root_dir = self.root_dir
         lines = []
         for file_path, hashed_file in self.entries.items():
-            mode_char = ' ' if hashed_file.text_mode else '*'
+            rel_file_path = os.path.relpath(file_path, start=root_dir)
             lines.append(
-                f"{hashed_file.mtime_str() if hashed_file.mtime is not None else ''},"
-                f"{hashed_file.size if hashed_file.size is not None else ''},"
+                f"{hashed_file.mtime if hashed_file.mtime is not None else ''},"
                 f"{hashed_file.hash_type},"
-                f"{hashed_file.hex_hash()} {mode_char}{hashed_file.filename}")
+                f"{hashed_file.hex_hash()} {rel_file_path}")
 
         with open(self.get_path(), "w", encoding="UTF-8") as w:
             w.write("\n".join(lines))
+            w.write("\n")
 
         return True
 
-    def write_as_single_hash_file(self, force=False) -> bool:
-        convert_algo_name: str
-        if not self.single_hash:
-            print("File contains multiple hash algorithms but is supposed to be "
-                  "written as conventional single hash file (*.md5, *.sha512 etc.).\n"
-                  "Guaranteed (on every python platform) hash algorithm names (RECOMMENDED):\n"
-                  f"{', '.join(hashlib.algorithms_available)}\n"
-                  "Additionally available hash algorithm names:\n"
-                  f"{', '.join(hashlib.algorithms_available - hashlib.algorithms_guaranteed)}\n")
-            while convert_algo_name not in hashlib.algorithms_available:
-                convert_algo_name = input(
-                    "\nEnter a hash algorithm name that all files that were hashed "
-                    "with another algorithm should be re-hashed with: ").strip()
-        else:
-            # get any value from entries and use it's hash_type
-            convert_algo_name = next(iter(self.entries.values())).hash_type
+    def _write_as_single_hash_file(self, force: bool = False) -> bool:
+        assert self.single_hash
 
-        self.filename = f"{os.path.splitext(self.filename)[0]}.{convert_algo_name}"
         write_file = self._check_write_file(force)
         if not write_file:
             return False
@@ -1040,26 +1045,60 @@ class ChecksumHelperData:
             # convert absolute paths to paths that are relative to the hash file location
             rel_file_path = os.path.relpath(file_path, start=root_dir)
 
-            if not single_hash and hashed_file.hash_type != convert_algo_name:
+            lines.append(
+                f"{hashed_file.hex_hash()} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
+
+        # older version of TotalCommander need UTF-8 BOM for checksum files so use UTF-8-SIG
+        with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
+            w.write("\n".join(lines))
+            w.write("\n")
+
+        return write_file
+
+    def set_filename(self, filename: str) -> None:
+        _, ext = os.path.splitext(filename)
+        if not ext or ext == ".cshd":
+            self.single_hash = False
+            self.hash_type = None
+        else:
+            hash_type = ext[1:]
+            if hash_type not in hashlib.algorithms_available:
+                logger.error("Could not rename file to have extension '%s' since it is not a "
+                             "supported (by hashlib) hash algorithm!", hash_type)
+                return None
+            else:
+                self.to_single_hash_file(hash_type)
+
+        self.relocate(filename)
+
+    def to_single_hash_file(self, hash_type: str) -> None:
+        # if not self.single_hash:
+        #     print("File contains multiple hash algorithms but is supposed to be "
+        #           "written as conventional single hash file (*.md5, *.sha512 etc.).\n"
+        #           "Guaranteed (on every python platform) hash algorithm names (RECOMMENDED):\n"
+        #           f"{', '.join(hashlib.algorithms_available)}\n"
+        #           "Additionally available hash algorithm names:\n"
+        #           f"{', '.join(hashlib.algorithms_available - hashlib.algorithms_guaranteed)}\n")
+        #     while convert_algo_name not in hashlib.algorithms_available:
+        #         convert_algo_name = input(
+        #             "\nEnter a hash algorithm name that all files that were hashed "
+        #             "with another algorithm should be re-hashed with: ").strip()
+
+        for file_path, hashed_file in self.entries.items():
+            if hashed_file.hash_type != hash_type:
                 # verify stored hash using old algo still matches
                 new_hash = gen_hash_from_file(file_path, hashed_file.hash_type)
                 if new_hash != hashed_file.hash_bytes:
                     logger.warning("File %s doesnt match most current hash: %s!",
                                    file_path, hashed_file.hex_hash())
 
-                new_hash_hex = gen_hash_from_file(file_path, cast(str, convert_algo_name), True)
+                new_hash = gen_hash_from_file(file_path, hash_type)
+                hashed_file.hash_type = hash_type
+                hashed_file.hash_bytes = new_hash
 
-                lines.append(
-                    f"{new_hash_hex} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
-            else:
-                lines.append(
-                    f"{hashed_file.hex_hash()} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
-
-        # older version of TotalCommander need UTF-8 BOM for checksum files so use UTF-8-SIG
-        with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
-            w.write("\n".join(lines))
-
-        return write_file
+        self.filename = f"{os.path.splitext(self.filename)[0]}.{hash_type}"
+        self.single_hash = True
+        self.hash_type = hash_type
 
     def relocate(self, mv_path: str) -> Tuple[Optional[str], Optional[str]]:
         # error when trying to move to diff drive
@@ -1076,7 +1115,7 @@ class ChecksumHelperData:
             return None, None
         new_hash_file_dir, new_filename = os.path.split(new_moved_path)
 
-        # we dont need to modify our file paths in self.filename_hash_dict since
+        # we dont need to modify our file paths in self.entries since
         # we're using absolute paths anyway
         self.root_dir, self.filename = new_hash_file_dir, new_filename
         return new_hash_file_dir, new_filename
@@ -1086,10 +1125,7 @@ class ChecksumHelperData:
         new_hash_file_dir, new_filename = self.relocate(mv_path)
         written = False
         if new_hash_file_dir is not None:
-            if self.single_hash:
-                written = self.write_as_single_hash_file()
-            else:
-                written = self.write()
+            written = self.write()
 
         if written:
             logger.info("Copied hash file to %s",
@@ -1100,7 +1136,7 @@ class ChecksumHelperData:
         # restore old path
         self.root_dir, self.filename = bu_root, bu_fn
 
-    def update_from_dict(self, update_dict: Dict[str, HashedFile]):
+    def update_from_dict(self, update_dict: Dict[str, 'HashedFile']):
         self.entries.update(update_dict)
 
     def filter_deleted_files(self) -> None:
@@ -1229,7 +1265,7 @@ class HashedFile:
         finally:
             return result
 
-    def copy(self) -> HashedFile:
+    def copy(self) -> 'HashedFile':
         return copy.copy(self)
 
 
@@ -1284,8 +1320,10 @@ def _cl_build_most_current(args: argparse.Namespace) -> None:
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.build_most_current()
     if c.hash_file_most_current:
-        if args.filter_deleted:
+        if not args.dont_filter_deleted:
             c.hash_file_most_current.filter_deleted_files()
+        if args.out_filename:
+            c.hash_file_most_current.set_filename(args.out_filename)
         c.hash_file_most_current.write()
     else:
         logger.error("Could not build most current hash file data for: %s", args.path)
@@ -1338,8 +1376,8 @@ def _cl_verify_hfile(args: argparse.Namespace) -> Tuple[int, int, int, int]:
         cshd = ChecksumHelperData(None, hash_file)
         cshd.read()
         crc_errors, missing, matches = cshd.verify()
-        all_missing.append((cshd.hash_file_dir, missing))
-        all_failed_checksums.append((cshd.hash_file_dir, crc_errors))
+        all_missing.append((cshd.root_dir, missing))
+        all_failed_checksums.append((cshd.root_dir, crc_errors))
 
         files_total += len(cshd.entries)
 
@@ -1397,7 +1435,7 @@ class SmartFormatter(argparse.HelpFormatter):
     """Smart formatter that uses the RawTextFormatter if the help text begins with 'R|'
        src: https://stackoverflow.com/a/22157136 by Anthon"""
 
-    def _split_lines(self, text: str, width: int) -> List[argparse._Text]:
+    def _split_lines(self, text: str, width: int) -> List[str]:
         if text.startswith('R|'):
             return text[2:].splitlines()  
         # this is the RawTextHelpFormatter._split_lines
@@ -1464,12 +1502,14 @@ if __name__ == "__main__":
                                                     "write the newest ones to file. ATTENTION: "
                                                     "removes hashes of missing files by default!")
     build_most_current.add_argument("path", type=str)
-    build_most_current.add_argument("-alg", "--hash-algorithm", type=str, default="sha512",
-                                    help="If most current hashes include mixed algorithms, "
-                                         "the specified one will be used to re-do the hash",
-                                         choices=("md5", "sha256", "sha512"))
+    build_most_current.add_argument("-o", "--out-filename", type=str,
+                                    help="Default filename is the the name of the parent dir with "
+                                         "_most_current_ and the date appended, if multiple hash "
+                                         "types are used a .cshd file is created. Specify a filename "
+                                         "having a hash type (see hashlib.algorithms_available) as "
+                                         "extension to have all other hashes be re-hashed to this one!")
     # store_true -> default false, when specified true <-> store_false reversed
-    build_most_current.add_argument("-fd", "--filter-deleted", action="store_false",
+    build_most_current.add_argument("--dont-filter-deleted", action="store_true",
                                     help="Dont filter out deleted files in most_current hash file")
     # set func to call when subcommand is used
     build_most_current.set_defaults(func=_cl_build_most_current)
