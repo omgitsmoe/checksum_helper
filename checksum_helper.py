@@ -9,6 +9,7 @@ import glob
 import binascii
 import datetime
 import enum
+import copy
 
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
@@ -210,31 +211,27 @@ def move_fpath(abspath: str, mv_path: str) -> Optional[str]:
 # _hex = ... so we use the default _hex=False when omitting _hex
 @overload
 def gen_hash_from_file(fname: str, hash_algo_str: str,
-                       _hex: Literal[False] = ...) -> Optional[str]: ...
+                       _hex: Literal[False] = ...) -> bytes: ...
 
 @overload
 def gen_hash_from_file(fname: str, hash_algo_str: str,
-                       _hex: Literal[True]) -> Optional[str]: ...
+                       _hex: Literal[True]) -> str: ...
 
-def gen_hash_from_file(fname: str, hash_algo_str: str, _hex: bool=False) -> Optional[Union[str, bytes]]:
+def gen_hash_from_file(fname: str, hash_algo_str: str, _hex: bool=False) -> Union[str, bytes]:
     # construct a hash object by calling the appropriate constructor function
     hash_obj = hashlib.new(hash_algo_str)
-    try:
-        # open file in read-only byte-mode
-        with open(fname, "rb") as f:
-            # only read in chunks of size 4096 bytes
+    # open file in read-only byte-mode
+    with open(fname, "rb") as f:
+        # only read in chunks of size 4096 bytes
+        chunk = f.read(4096)
+        while chunk:
+            # update it with the data by calling update() on the object
+            # as many times as you need to iteratively update the hash
+            hash_obj.update(chunk)
             chunk = f.read(4096)
-            while chunk:
-                # update it with the data by calling update() on the object
-                # as many times as you need to iteratively update the hash
-                hash_obj.update(chunk)
-                chunk = f.read(4096)
-            # using the lambda was slower (~30-40ms) for ~586 files
-            # for chunk in iter(lambda: f.read(4096), b""):
-    except FileNotFoundError:
-        logger.debug("Couldn't open file %s for hashing!", fname)
-        # TODO don't catch here and handle this in caller
-        return None
+        # using the lambda was slower (~30-40ms) for ~586 files
+        # for chunk in iter(lambda: f.read(4096), b""):
+
     # get digest out of the object by calling digest() (or hexdigest() for hex-encoded string)
     if _hex:
         return hash_obj.hexdigest()
@@ -253,8 +250,8 @@ def build_hashfile_str(filename_hash_pairs: Iterable[Tuple[str, str]]) -> str:
     return "\n".join(final_str_ln) + '\n'
 
 
-# TODO replace with hashlib.algorithms_available or _guaranteed
-HASH_FILE_EXTENSIONS = ("crc", "md5", "sha", "sha256", "sha512")
+HASH_FILE_EXTENSIONS = {algo for algo in hashlib.algorithms_available}
+HASH_FILE_EXTENSIONS.add('cshd')
 # forgot the comma again for single value tuple!!!!!!
 # dirs starting with a substring in the tuple below will not be searched for hash files
 DIR_START_STR_EXCLUDE = (".git",)
@@ -345,7 +342,9 @@ def include_path(path: str, whitelist: Optional[List[str]]=None,
 
 
 CHOptions = TypedDict('CHOptions', {'include_unchanged_files_incremental': bool,
-                                    'discover_hash_files_depth': int})
+                                    'discover_hash_files_depth': int,
+                                    'incremental_skip_unchanged': bool,
+                                    'incremental_collect_fstat': bool})
 
 
 class ChecksumHelper:
@@ -374,6 +373,9 @@ class ChecksumHelper:
         self.options: CHOptions = {
             "include_unchanged_files_incremental": True,
             "discover_hash_files_depth": -1,
+            # TODO cl flags for these
+            "incremental_skip_unchanged": False,
+            "incremental_collect_fstat": True,
         }
 
     def discover_hash_files(self) -> None:
@@ -390,40 +392,42 @@ class ChecksumHelper:
 
     def hash_files_initialized(self) -> bool:
         return True if self.all_hash_files and all(
-                hfile.filename_hash_dict for hfile in self.all_hash_files) else False
+                hfile.entries for hfile in self.all_hash_files) else False
 
     def build_most_current(self) -> None:
         if not self.hash_files_initialized():
             self.read_all_hash_files()
 
-        used_algos = list(set((hash_file.hash_type for hash_file in self.all_hash_files)))
         self.sort_hash_files_by_mtime()
-
-        if len(used_algos) == 1:
-            single_algo = True
-            self.hash_file_most_current = HashFile(
-                    self, os.path.join(self.root_dir,
-                                       f"{self.root_dir_name}_most_current_"
-                                       f"{time.strftime('%Y-%m-%d')}.{used_algos[0]}"))
+        all_single_hash = all(x.single_hash for x in self.all_hash_files)
+        if all_single_hash:
+            filename = os.path.join(
+                self.root_dir,
+                f"{self.root_dir_name}_most_current_"
+                f"{time.strftime('%Y-%m-%d')}.{self.all_hash_files[0].hash_type}")
         else:
-            single_algo = False
-            self.hash_file_most_current = MixedAlgoHashCollection(self)
+            filename = os.path.join(
+                self.root_dir,
+                f"{self.root_dir_name}_most_current_"
+                f"{time.strftime('%Y-%m-%d')}.cshd")
 
-        result = cast(Union[HashFile, MixedAlgoHashCollection], self.hash_file_most_current)
+        most_current = ChecksumHelperData(self, filename)
         # update dict with dicts from hash files -> sorted
         # dicts with biggest mtime last(newest) -> most current
-        for hash_file in self.all_hash_files:
-            hash_type = hash_file.hash_type
-            for file_path, hash_str in hash_file.filename_hash_dict.items():
+        for cshd in self.all_hash_files:
+            for file_path, hashed_file in cshd.entries.items():
                 # since we add hashes from different files we have to combine the realtive
                 # path IN the hashfile with the path TO the hashfile
                 # to get a correct path
-                combined_path = os.path.normpath(os.path.join(hash_file.hash_file_dir, file_path))
-                if single_algo:
-                    cast(HashFile, result).set_hash_for_file(combined_path, hash_str)
-                else:
-                    cast(MixedAlgoHashCollection, result).set_hash_for_file(
-                            hash_type, combined_path, hash_str)
+                combined_path = os.path.normpath(os.path.join(cshd.hash_file_dir, file_path))
+                most_current.set_entry(
+                    combined_path,
+                    HashedFile(
+                        combined_path, hashed_file.mtime, hashed_file.size,
+                        hashed_file.hash_type, hashed_file.hash_bytes, hashed_file.text_mode)
+                )
+
+        self.hash_file_most_current = most_current
 
     def do_incremental_checksums(
             self, algo_name, start_path=None, root_only=False,
@@ -448,10 +452,12 @@ class ChecksumHelper:
             return
 
         dir_name = os.path.basename(start_path)
-        incremental = HashFile(
+        incremental = ChecksumHelperData(
                 self, os.path.join(start_path, f"{dir_name}_"
                                                f"{time.strftime('%Y-%m-%d')}.{algo_name}"))
 
+        skip_unchanged = self.options['incremental_skip_unchanged']
+        collect_fstat = self.options['incremental_collect_fstat']
         for dirpath, dirnames, fnames in os.walk(start_path):
             # filter dirnames before traversing into them
             dirnames[:] = [d for d in dirnames
@@ -476,64 +482,112 @@ class ChecksumHelper:
                 if not include_path(rel_from_root, whitelist, blacklist):
                     continue
 
-                new_hash, include = self._build_verfiy_hash(file_path, algo_name)
+                include, hashed_file = self._build_verfiy_hash(file_path, algo_name)
                 if include:
-                    # NOTE(moe): generating the dict here would be faster instead of using
-                    # the set_hash_for_file method but the performance difference is prob
-                    # marginal -> premature optimization (for later: remember to normalize
-                    # file_path)
-                    # filename_hash_dict[os.path.normpath(file_path)] = new_hash
-                    incremental.set_hash_for_file(file_path, new_hash)
+                    incremental.set_entry(file_path, cast(HashedFile, hashed_file))
 
             logger.infov("Finished hasing files in %s", dirpath)  # type: ignore
             if root_only:
                 break
 
-        if incremental.filename_hash_dict:
+        if incremental.entries:
             incremental.write()
 
-    def _build_verfiy_hash(self, file_path: str, algo_name: str) -> Tuple[Optional[str], bool]:
+    def _build_verfiy_hash(
+            self, file_path: str, algo_name: str,
+            rehash_other_types: bool = True, collect_fstat: bool = True,
+            skip_unchanged: bool = False) -> Tuple[bool, Optional[HashedFile]]:
         # NOTE: assumes self.hash_file_most_current is not None
-        new_hash: Optional[str] = None
+        new: Optional[HashedFile] = None
         include = False
         # fpath is an absolute path
-        old_hash, hash_algo_str = cast(Union[HashFile, MixedAlgoHashCollection],
-                                       self.hash_file_most_current).get_hash_by_file_path(file_path)
-        if old_hash is None:
-            new_hash = gen_hash_from_file(file_path, algo_name)
+        old = cast(ChecksumHelperData, self.hash_file_most_current).get_entry(file_path)
+        if old is None:
+            new_hash = HashedFile.compute_file_hash(file_path, algo_name)
+            if new_hash is None:
+                logger.warning("File '%s' will be skipped!", file_path)
+                return False, None
+            new = HashedFile(file_path, None, None, algo_name, new_hash, False)
+            if collect_fstat:
+                new.update_mtime_and_size()
+
             include = True
         else:
-            # when building incremental hashfile we have to use
-            # the hash type for which we have A HASH in most_current
-            # to find out if file changed -> changed -> use new hash type
-            new_hash = gen_hash_from_file(file_path, hash_algo_str)
-            if new_hash == old_hash:
-                logger.debug("Old and new hashes match for file %s!", file_path)
-                include = self.options["include_unchanged_files_incremental"]
+            # do a size/mtime comparison first if skip_unchanged and the same hash_type was used
+            mtime: Optional[float] = None
+            size: Optional[int] = None
+            algos_match = old.hash_type == algo_name
+            old_has_mtime = old.mtime is not None
+            if collect_fstat or (skip_unchanged and old_has_mtime):
+                mb_fstat = HashedFile.fetch_mtime_and_size(file_path)
+                if mb_fstat is not None:
+                    size, mtime = mb_fstat
+
+            # 0 match -1 current mtime is smaller/older 1 current mtime is bigger/younger
+            comp_mtime: Optional[int] = None
+            # # 0 match -1 current size is smaller 1 current size is bigger
+            comp_size:  Optional[int] = None
+            if old_has_mtime and mtime is not None:
+                comp_mtime = (0 if old.mtime == mtime else
+                              1 if cast(float, mtime) > cast(float, old.mtime) else -1)
+                comp_size = (0 if old.size == size else
+                             1 if cast(int, size) > cast(int, old.size) else -1)
+            skip = False
+            if skip_unchanged and comp_size == 0 and comp_mtime == 0:
+                include = self.options['include_unchanged_files_incremental']
+                skip = True
+                logger.infovv(  # type: ignore
+                        "Skipping generation of a hash for file '%s' since the size/mtime matches!",
+                        file_path)
+
+            if not skip:
+                # when building incremental hashfile we have to use
+                # the hash type for which we have A HASH in most_current
+                # to find out if file changed -> changed -> use new hash type
+                current_hash = HashedFile.compute_file_hash(file_path, old.hash_type)
+                if current_hash is None:
+                    logger.warning("File '%s' will be skipped!", file_path)
+                    return False, None
+
+                # assume that we will be able to compute hashes after computing new_hash
+                if current_hash == old.hash_bytes:
+                    logger.infovv("Old and new hashes match for file %s!", file_path)  # type: ignore
+                    include = self.options["include_unchanged_files_incremental"]
+                    new = old
+                else:
+                    if comp_mtime == 0:
+                        logger.warning(
+                            "Unexpected change of file hash, when modification time is "
+                            "the same for file: %s", file_path)
+                    elif comp_mtime == 1 or comp_mtime is None:
+                        logger.info("File \"%s\" changed, a new hash was generated!", file_path)
+                    elif comp_mtime == -1:
+                        logger.info("File hashes don't match with the file on disk being older "
+                                    "than the recorded modfication time! The hash of the file "
+                                    "on disk will be used: %s", file_path)
+                    include = True
+                    new_hash = current_hash
             else:
-                logger.info("File \"%s\" changed, a new hash was generated!", file_path)
+                new = old
+
+            if not algos_match and rehash_other_types:
+                logger.infov("Recorded hash used %s as algorithm -> re-hashing "  # type: ignore
+                             "with %s: %s!", old.hash_type, algo_name, file_path)
+                new_hash = HashedFile.compute_file_hash(file_path, algo_name)
                 include = True
 
-            if algo_name != hash_algo_str:
-                logger.infov("Existing hash used %s as algorithm -> re-hashing "  # type: ignore
-                             "with %s: %s!", hash_algo_str, algo_name, file_path)
-                new_hash = gen_hash_from_file(file_path, algo_name)
-                include = True
+            if include and new is None:
+                new = HashedFile(file_path, mtime, size, algo_name, cast(bytes, new_hash), False)
 
-        return new_hash, include
+        return include, new
 
     def write_most_current(self, hash_algo: str) -> None:
         if not self.hash_file_most_current:
             self.build_most_current()
-        if isinstance(self.hash_file_most_current, MixedAlgoHashCollection):
-            logger.info("Converting collection of multiple hash algorithms to a single hash file!")
-            self.hash_file_most_current = self.hash_file_most_current.to_single_hash_file(
-               f"{self.root_dir}{os.sep}{self.root_dir_name}_most_current_"
-               f"{time.strftime('%Y-%m-%d')}.{hash_algo}", hash_algo)
-        cast(HashFile, self.hash_file_most_current).write()
+        cast(ChecksumHelperData, self.hash_file_most_current).write()
 
     def sort_hash_files_by_mtime(self) -> None:
-        self.all_hash_files = sorted(self.all_hash_files, key=lambda x: x.mtime)
+        self.all_hash_files = sorted(self.all_hash_files, key=lambda x: cast(float, x.mtime))
 
     def check_missing_files(self) -> None:
         """
@@ -542,8 +596,8 @@ class ChecksumHelper:
         if not self.hash_file_most_current:
             self.build_most_current()
 
-        file_paths = cast(Union[HashFile, MixedAlgoHashCollection],
-                          self.hash_file_most_current).filename_hash_dict.keys()
+        file_paths = cast(ChecksumHelperData,
+                          self.hash_file_most_current).entries.keys()
         all_files = set()
         dirs = set()
         # add root dir
@@ -614,9 +668,9 @@ class ChecksumHelper:
         # without a filename_filter (that's why we can't use self.all_hash_files)
         all_hash_files = []
         for hf_path in discover_hash_files(self.root_dir, depth=-1, exclude_pattern=None):
-            hf = HashFile(self, hf_path)
-            hf.read()
-            all_hash_files.append(hf)
+            cshd = ChecksumHelperData(self, hf_path)
+            cshd.read()
+            all_hash_files.append(cshd)
 
         # abspath basically just does join(os.getcwd(), path) if path isabs is False
         source_path = (source_path if os.path.isabs(source_path)
@@ -660,37 +714,37 @@ class ChecksumHelper:
             logger.error("Couldn't move file(s): %s", str(e))
             return None
 
-        for hash_file in all_hash_files:
+        for chsd in all_hash_files:
             if src_is_dir:
                 moved_fn_hash_dict = {}
-                for fpath, hash_str in hash_file.filename_hash_dict.items():
+                for fpath, hashed_file in chsd.entries.items():
                     if fpath.startswith(source_path):
                         # remove source_path from fpath and replace it with dest
                         moved = fpath.replace(source_path, dest_path)
-                        moved_fn_hash_dict[moved] = hash_str
+                        moved_fn_hash_dict[moved] = hashed_file
                     else:
-                        moved_fn_hash_dict[fpath] = hash_str
+                        moved_fn_hash_dict[fpath] = hashed_file
                 # replace with new fn hash dict
-                hash_file.filename_hash_dict = moved_fn_hash_dict
+                chsd.entries = moved_fn_hash_dict
             else:
                 # save hash and del old path entry and replace it with new path
-                hash_str, _ = hash_file.get_hash_by_file_path(source_path)
+                mb_hashed_file = chsd.get_entry(source_path)
                 # present in hash_file (can't use continue here since we still might need to
                 # relocate and write the hash file)
-                if hash_str:
-                    del hash_file[source_path]
+                if mb_hashed_file:
+                    del chsd[source_path]
                     # even if file was moved INTO dir we can use dest_path without modification
                     # since shutil.move returned the direct path to the file it moved
-                    hash_file.set_hash_for_file(dest_path, hash_str)
+                    chsd.set_entry(dest_path, mb_hashed_file)
 
             # check if hash_file was also moved
-            if src_is_dir and hash_file.get_path().startswith(source_path):
+            if src_is_dir and chsd.get_path().startswith(source_path):
                 # we already got the path pointing directly to the moved file/dir from
                 # shutil.move even if the target was a dir
-                    hash_file.relocate(hash_file.get_path().replace(source_path, dest_path))
-            elif not src_is_dir and hash_file.get_path() == source_path:
-                    hash_file.relocate(dest_path)
-            hash_file.write(force=True)
+                    chsd.relocate(chsd.get_path().replace(source_path, dest_path))
+            elif not src_is_dir and chsd.get_path() == source_path:
+                    chsd.relocate(dest_path)
+            chsd.write(force=True)
 
 
 class ChecksumHelperData:
@@ -712,6 +766,8 @@ class ChecksumHelperData:
         ext = os.path.splitext(self.filename)
         # whether only one type of hash alogrithm is used
         self.single_hash: bool = False if not ext or ext == ".cshd" else True
+        # None if self.single_hash is False
+        self.hash_type: Optional[str] = self.filename.rsplit(".", 1)[1] if self.single_hash else None
 
     def __eq__(self, other):
         """
@@ -746,7 +802,7 @@ class ChecksumHelperData:
         else:
             return True
 
-    def get_hash_by_file_path(self, file_path: str) -> Optional[HashedFile]:
+    def get_entry(self, file_path: str) -> Optional[HashedFile]:
         """
         Pass in file_path (normalized here using normpath) to get stored hash for
         that path
@@ -762,7 +818,7 @@ class ChecksumHelperData:
         except KeyError:
             return None
 
-    def set_hash_for_file(self, file_path: str, hashed_file: HashedFile) -> None:
+    def set_entry(self, file_path: str, hashed_file: HashedFile) -> None:
         """
         Sets hash value in HashFile for specified file_path
 
@@ -776,6 +832,12 @@ class ChecksumHelperData:
         return os.path.join(self.root_dir, self.filename)
 
     def read(self) -> None:
+        try:
+            self.mtime = os.stat(self.get_path()).st_mtime
+        except (FileNotFoundError, PermissionError):
+            logger.error("Could not access/find hash file '%s'", self.get_path())
+            return
+
         with open(self.get_path(), "r", encoding="UTF-8") as f:
             text = f.read()
 
@@ -829,8 +891,13 @@ class ChecksumHelperData:
                     hash_type, binascii.a2b_hex(hash_str), False)
 
     def read_from_single_hash_file(self) -> None:
-        hash_type = self.filename.rsplit(".", 1)[1]
-        self.mtime = os.stat(self.get_path()).st_mtime
+        hash_type = self.hash_type
+        try:
+            self.mtime = os.stat(self.get_path()).st_mtime
+        except (FileNotFoundError, PermissionError):
+            logger.error("Could not access/find hash file '%s'", self.get_path())
+            return
+
         # first line had \ufeff which is the BOM for utf-8 with bom
         with open(self.get_path(), "r", encoding="UTF-8-SIG") as f:
             # .lstrip(u'\ufeff')
@@ -903,7 +970,7 @@ class ChecksumHelperData:
             abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
             self.entries[abs_normed_path] = HashedFile(
                     abs_normed_path, None, None,
-                    hash_type, binascii.a2b_hex(hash_str), text_mode)
+                    cast(str, hash_type), binascii.a2b_hex(hash_str), text_mode)
 
     def _check_write_file(self, force=False) -> bool:
         write_file = False
@@ -945,11 +1012,7 @@ class ChecksumHelperData:
         return True
 
     def write_as_single_hash_file(self, force=False) -> bool:
-        write_file = self._check_write_file(force)
-        if not write_file:
-            return False
-
-        convert_algo_name = None
+        convert_algo_name: str
         if not self.single_hash:
             print("File contains multiple hash algorithms but is supposed to be "
                   "written as conventional single hash file (*.md5, *.sha512 etc.).\n"
@@ -959,7 +1022,16 @@ class ChecksumHelperData:
                   f"{', '.join(hashlib.algorithms_available - hashlib.algorithms_guaranteed)}\n")
             while convert_algo_name not in hashlib.algorithms_available:
                 convert_algo_name = input(
-                    "\nEnter a hash algorithm name that all files should be re-hashed to:").strip()
+                    "\nEnter a hash algorithm name that all files that were hashed "
+                    "with another algorithm should be re-hashed with: ").strip()
+        else:
+            # get any value from entries and use it's hash_type
+            convert_algo_name = next(iter(self.entries.values())).hash_type
+
+        self.filename = f"{os.path.splitext(self.filename)[0]}.{convert_algo_name}"
+        write_file = self._check_write_file(force)
+        if not write_file:
+            return False
 
         root_dir = self.root_dir
         lines = []
@@ -1124,10 +1196,41 @@ class HashedFile:
         else:
             return datetime.datetime.fromtimestamp(self.mtime).isoformat()
 
-    def fetch_mtime_and_size(self) -> None:
-        stat = os.stat(self.filename)
-        self.mtime = stat.st_mtime
-        self.size = stat.st_size
+    @staticmethod
+    def fetch_mtime_and_size(filename: str) -> Optional[Tuple[int, float]]:
+        try:
+            stat = os.stat(filename)
+        except FileNotFoundError:
+            logger.warning("Could not find file '%s' for getting file stats!", filename)
+            result = None
+        except PermissionError:
+            logger.warning("Permission to stat the file was denied: %s!", filename)
+            result = None
+        else:
+            result = stat.st_size, stat.st_mtime
+
+        return result
+
+    def update_mtime_and_size(self) -> None:
+        mb_stat = HashedFile.fetch_mtime_and_size(self.filename)
+        if mb_stat is not None:
+            self.size, self.mtime = mb_stat
+
+    @staticmethod
+    def compute_file_hash(filename: str, hash_type: str) -> Optional[bytes]:
+        try:
+            result: Optional[bytes] = gen_hash_from_file(filename, hash_type)
+        except FileNotFoundError:
+            logger.warning("Could not find file '%s' for hashing!", filename)
+            result = None
+        except PermissionError:
+            logger.warning("Permission to open the file for hashing was denied: %s!", filename)
+            result = None
+        finally:
+            return result
+
+    def copy(self) -> HashedFile:
+        return copy.copy(self)
 
 
 class AbspathDrivesDontMatch(Exception):
@@ -1180,17 +1283,19 @@ def _cl_build_most_current(args: argparse.Namespace) -> None:
                        hash_filename_filter=args.hash_filename_filter)
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.build_most_current()
-    cast(Union[HashFile, MixedAlgoHashCollection], c.hash_file_most_current)
-    if args.filter_deleted:
-        c.hash_file_most_current.filter_deleted_files()
-    c.hash_file_most_current.write()
+    if c.hash_file_most_current:
+        if args.filter_deleted:
+            c.hash_file_most_current.filter_deleted_files()
+        c.hash_file_most_current.write()
+    else:
+        logger.error("Could not build most current hash file data for: %s", args.path)
 
 
-def _cl_copy(args: argparse.Namespace) -> HashFile:
-    h = HashFile(None, args.source_path)
-    h.read()
-    h.copy_to(args.dest_path)
-    return h
+def _cl_copy(args: argparse.Namespace) -> ChecksumHelperData:
+    cshd = ChecksumHelperData(None, args.source_path)
+    cshd.read()
+    cshd.copy_to(args.dest_path)
+    return cshd
 
 
 def _cl_move(args: argparse.Namespace) -> None:
@@ -1209,13 +1314,13 @@ def _cl_verify_all(args: argparse.Namespace) -> Tuple[int, int, int, int]:
         c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
         c.build_most_current()
         # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
-        crc_errors, missing, matches = cast(Union[HashFile, MixedAlgoHashCollection],
+        crc_errors, missing, matches = cast(ChecksumHelperData,
                                             c.hash_file_most_current).verify()
         all_missing.append((root_p, missing))
         all_failed_checksums.append((root_p, crc_errors))
         files_total += len(
-            cast(Union[HashFile, MixedAlgoHashCollection],
-                 c.hash_file_most_current).filename_hash_dict)
+            cast(ChecksumHelperData,
+                 c.hash_file_most_current).entries)
 
     print("\nVerified folders: %s" % (", ".join(args.root_dir),))
     _print_summary(files_total, all_missing, all_failed_checksums)
@@ -1230,13 +1335,13 @@ def _cl_verify_hfile(args: argparse.Namespace) -> Tuple[int, int, int, int]:
     all_missing = []
     all_failed_checksums = []
     for hash_file in args.hash_file_name:
-        h = HashFile(None, hash_file)
-        h.read()
-        crc_errors, missing, matches = h.verify()
-        all_missing.append((h.hash_file_dir, missing))
-        all_failed_checksums.append((h.hash_file_dir, crc_errors))
+        cshd = ChecksumHelperData(None, hash_file)
+        cshd.read()
+        crc_errors, missing, matches = cshd.verify()
+        all_missing.append((cshd.hash_file_dir, missing))
+        all_failed_checksums.append((cshd.hash_file_dir, crc_errors))
 
-        files_total += len(h.filename_hash_dict)
+        files_total += len(cshd.entries)
 
     print("\nVerified hash files: %s" % (", ".join(args.hash_file_name),))
     _print_summary(files_total, all_missing, all_failed_checksums)
@@ -1284,7 +1389,7 @@ def _cl_verify_filter(args: argparse.Namespace) -> None:
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.build_most_current()
     # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
-    cast(Union[HashFile, MixedAlgoHashCollection],
+    cast(ChecksumHelperData,
          c.hash_file_most_current).verify(whitelist=args.filter)
 
 
@@ -1378,18 +1483,18 @@ if __name__ == "__main__":
     # set func to call when subcommand is used
     check_missing.set_defaults(func=_cl_check_missing)
 
-    copy = subparsers.add_parser("copy_hf", aliases=["cphf"], parents=[parent_parser],
-                                 help="Copy a hash file modifying the relative paths "
-                                      "within accordingly so they are still valid.")
-    copy.add_argument("source_path", type=str,
-                      help="Path to the hash file that should be copied")
-    copy.add_argument("dest_path", type=str,
-                      help="Absolute or relative (to the source_path) path to the destination "
-                           "of copied hash file (paths not ending in \\ or / are assumed to "
-                           "be file paths!): e.g. C:\\test\\photos.sha512, C:\\test\\, "
-                           "../test/photos.sha512, .\\..\\test2\\")
+    copy_parser = subparsers.add_parser("copy_hf", aliases=["cphf"], parents=[parent_parser],
+                                        help="Copy a hash file modifying the relative paths "
+                                             "within accordingly so they are still valid.")
+    copy_parser.add_argument("source_path", type=str,
+                             help="Path to the hash file that should be copied")
+    copy_parser.add_argument("dest_path", type=str,
+                             help="Absolute or relative (to the source_path) path to the destination "
+                                  "of copied hash file (paths not ending in \\ or / are assumed to "
+                                  "be file paths!): e.g. C:\\test\\photos.sha512, C:\\test\\, "
+                                  "../test/photos.sha512, .\\..\\test2\\")
     # set func to call when subcommand is used
-    copy.set_defaults(func=_cl_copy)
+    copy_parser.set_defaults(func=_cl_copy)
 
     move = subparsers.add_parser("move", aliases=["mv"], parents=[parent_parser],
                                  help="Move a (hash-)file/folder modifying the paths "
