@@ -11,7 +11,7 @@ import datetime
 import enum
 import copy
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from logging.handlers import RotatingFileHandler
 
 from typing import (
@@ -430,8 +430,8 @@ class ChecksumHelper:
                 most_current.set_entry(
                     combined_path,
                     HashedFile(
-                        combined_path, hashed_file.mtime, hashed_file.size,
-                        hashed_file.hash_type, hashed_file.hash_bytes, hashed_file.text_mode)
+                        combined_path, hashed_file.mtime, hashed_file.hash_type,
+                        hashed_file.hash_bytes, hashed_file.text_mode)
                 )
 
         self.hash_file_most_current = most_current
@@ -514,21 +514,18 @@ class ChecksumHelper:
             if new_hash is None:
                 logger.warning("File '%s' will be skipped!", file_path)
                 return False, None
-            new = HashedFile(file_path, None, None, algo_name, new_hash, False)
+            new = HashedFile(file_path, None, algo_name, new_hash, False)
             if collect_fstat:
-                new.update_mtime_and_size()
+                new.update_mtime()
 
             include = True
         else:
             # do a size/mtime comparison first if skip_unchanged and the same hash_type was used
             mtime: Optional[float] = None
-            size: Optional[int] = None
             algos_match = old.hash_type == algo_name
             old_has_mtime = old.mtime is not None
             if collect_fstat or (skip_unchanged and old_has_mtime):
-                mb_fstat = HashedFile.fetch_mtime_and_size(file_path)
-                if mb_fstat is not None:
-                    size, mtime = mb_fstat
+                mtime = HashedFile.fetch_mtime(file_path)
 
             # 0 match -1 current mtime is smaller/older 1 current mtime is bigger/younger
             comp_mtime: Optional[int] = None
@@ -537,14 +534,17 @@ class ChecksumHelper:
             if old_has_mtime and mtime is not None:
                 comp_mtime = (0 if old.mtime == mtime else
                               1 if cast(float, mtime) > cast(float, old.mtime) else -1)
-                comp_size = (0 if old.size == size else
-                             1 if cast(int, size) > cast(int, old.size) else -1)
+
+            # we already compared the mtime so now we can update the mtime on old
+            if not old_has_mtime:
+                old.mtime = mtime
+
             skip = False
-            if skip_unchanged and comp_size == 0 and comp_mtime == 0:
+            if skip_unchanged and comp_mtime == 0:
                 include = self.options['include_unchanged_files_incremental']
                 skip = True
                 logger.infovv(  # type: ignore
-                        "Skipping generation of a hash for file '%s' since the size/mtime matches!",
+                        "Skipping generation of a hash for file '%s' since the mtime matches!",
                         file_path)
 
             if not skip:
@@ -585,7 +585,7 @@ class ChecksumHelper:
                 include = True
 
             if include and new is None:
-                new = HashedFile(file_path, mtime, size, algo_name, cast(bytes, new_hash), False)
+                new = HashedFile(file_path, mtime, algo_name, cast(bytes, new_hash), False)
 
         return include, new
 
@@ -897,8 +897,7 @@ class ChecksumHelperData:
             # since we use them as keys
             abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
             self.entries[abs_normed_path] = HashedFile(
-                    abs_normed_path, mtime, size,
-                    hash_type, binascii.a2b_hex(hash_str), False)
+                    abs_normed_path, mtime, hash_type, binascii.a2b_hex(hash_str), False)
 
     def _read_from_single_hash_file(self) -> None:
         hash_type = self.hash_type
@@ -979,8 +978,7 @@ class ChecksumHelperData:
             # since we use them as keys
             abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
             self.entries[abs_normed_path] = HashedFile(
-                    abs_normed_path, None, None,
-                    cast(str, hash_type), binascii.a2b_hex(hash_str), text_mode)
+                    abs_normed_path, None, cast(str, hash_type), binascii.a2b_hex(hash_str), text_mode)
 
     def _check_write_file(self, force=False) -> bool:
         write_file = False
@@ -1219,17 +1217,22 @@ class HashType(enum.Enum):
 
 @dataclass
 class HashedFile:
-    __slots__ = ['filename', 'mtime', 'size', 'hash_type', 'hash_bytes', 'text_mode']
+    __slots__ = ['filename', 'mtime', 'hash_type', 'hash_bytes', 'text_mode']
 
     # absolute path!
     filename: str
     mtime: Optional[float]
-    # in bytes
-    size:   Optional[int]
     hash_type: str
     hash_bytes: bytes
     # for compatability reasons
     text_mode: bool
+
+    def meta_eql(self, o) -> bool:
+        for field in fields(HashedFile):
+            if getattr(self, field.name) != getattr(o, field.name):
+                print("FIELD", field.name, "NOT MATCHING")
+                return False
+        return True
 
     def hex_hash(self) -> str:
         # b2a_hex returns bytes string -> have to decode it as utf-8 to count as str
@@ -1242,7 +1245,7 @@ class HashedFile:
             return datetime.datetime.fromtimestamp(self.mtime).isoformat()
 
     @staticmethod
-    def fetch_mtime_and_size(filename: str) -> Optional[Tuple[int, float]]:
+    def fetch_mtime(filename: str) -> Optional[float]:
         try:
             stat = os.stat(filename)
         except FileNotFoundError:
@@ -1252,14 +1255,14 @@ class HashedFile:
             logger.warning("Permission to stat the file was denied: %s!", filename)
             result = None
         else:
-            result = stat.st_size, stat.st_mtime
+            result = stat.st_mtime
 
         return result
 
-    def update_mtime_and_size(self) -> None:
-        mb_stat = HashedFile.fetch_mtime_and_size(self.filename)
-        if mb_stat is not None:
-            self.size, self.mtime = mb_stat
+    def update_mtime(self) -> None:
+        mb_mtime = HashedFile.fetch_mtime(self.filename)
+        if mb_mtime is not None:
+            self.mtime = mb_mtime
 
     @staticmethod
     def compute_file_hash(filename: str, hash_type: str) -> Optional[bytes]:
@@ -1276,12 +1279,6 @@ class HashedFile:
 
     def copy(self) -> 'HashedFile':
         return copy.copy(self)
-
-
-class AbspathDrivesDontMatch(Exception):
-    def __init__(self, *args, **kwargs):
-        # first arg is normally msg
-        super().__init__(*args, **kwargs)
 
 
 def _cl_check_missing(args: argparse.Namespace) -> None:

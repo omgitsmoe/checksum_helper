@@ -1,3 +1,1 @@
 - add tests inc/verify (-> verify_cshd) with .cshd
-- tests inc: test warnings based on mtime, test collect_fstat, test skip_unchanged
-- replace all hardcoded \ in tests with os.sep

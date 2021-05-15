@@ -3,9 +3,13 @@ import shutil
 import pytest
 import logging
 import time
+import binascii
+import copy
+
+from typing import cast
 
 from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args
-from checksum_helper import ChecksumHelper, _cl_incremental, descend_into
+from checksum_helper import ChecksumHelper, _cl_incremental, descend_into, HashedFile, ChecksumHelperData, LOG_LVL_VERBOSE, LOG_LVL_EXTRAVERBOSE
 
 
 #                       filter, include unchanged
@@ -186,3 +190,282 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
     ])
 def test_descend_into(path, whitelist, blacklist, expected):
     assert descend_into(path, whitelist=whitelist, blacklist=blacklist) is expected
+
+
+build_verify_hf_most_current_data = [
+    ("new 2.txt", 1524334794.4067194, "sha512", "f6c5600ed1dbdcfdf829081f5417dccbbd2b9288e0b427e65c8cf67e274b69009cd142475e15304f599f429f260a661b5df4de26746459a3cef7f32006e5d1c1"),
+    ("new 3.txt", 1524334698.6291595, "md5", "92eb5ffee6ae2fec3ad71c777531578f"),
+    # no hash recorded
+    ("new 4.txt", 1524334840.3075361, "sha512", "e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d35249c009b66834ec2d53894915c25bfa8b6cae0db91f4ceb261"),
+    (f"sub1{os.sep}new 2.txt", 1524334688.5989518, "sha512", "1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75"),
+    (f"sub1{os.sep}new 3.txt", 1524334859.3268101, "sha512", "0555ffa5af6247333309562cd61d2e1de19a8e1f8927447f78d114098f279eedd387e8c441d1a18f9e5541e750c5176016c379ff5ecb90e16784bd4508477328"),
+    (f"sub1{os.sep}new 4.txt", 1524334707.4520152, "sha3_512", "bfe4d7f7377116dc15f794d902621797b72b32396382de2b6e49d4f1d7eabdfddcfc3bc127bb67f92f9458a5733bb21804e7ccd56b4b6f81049339f477cd279d"),
+    # no hash recorded
+    (f"sub1{os.sep}sub2{os.sep}new 2.txt", 1524334852.8311138, "sha512", "00dbe8c9f126a09af5172b9381c6c7462070aeab0020e49a6c73adbbdd7c14f1230fe4d0e08b81d1631a215a91592a074e625eaaa571e45704f8c5898c2bcca1"),
+    (f"sub1{os.sep}sub2{os.sep}new 3.txt", 1524334698.6291595, "md5", "92eb5ffee6ae2fec3ad71c777531578f"),
+    (f"sub1{os.sep}sub2{os.sep}new 4.txt", 1524334802.3300772, "sha3_512", "ce24e8e181d24d8189308ada1d6dc8fe780608b865a3e549e8903cebaf5910210487e93d4eb2397e8a0653b64f2e64e8b39298cd29a48effc3c86b96fe43b320"),
+]
+
+
+def test_build_verify(setup_tmpdir_param, caplog) -> None:
+    tmpdir = setup_tmpdir_param
+    root_dir = os.path.join(cast(str, tmpdir), "tt")
+    shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "tt"),
+                    os.path.join(root_dir, ""))
+
+    ch = ChecksumHelper(root_dir, None)
+    most_current = ChecksumHelperData(ch, os.path.join(root_dir, "tt_most_current.cshd"))
+    for i, (rel_fp, mtime, hash_type, hash_str) in enumerate(build_verify_hf_most_current_data):
+        if i in (2, 6):
+            continue
+        abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+        most_current.entries[abs_fp] = HashedFile(
+                abs_fp, mtime, hash_type, binascii.a2b_hex(hash_str), False)
+
+    ch.hash_file_most_current = most_current
+
+    #
+    # no hash recorded -> new with optional collect_fstat
+    #
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[2]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512")
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512", collect_fstat=False)
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, None, "sha512", binascii.a2b_hex(hash_str), False))
+
+    #
+    # hash recorded -> collect_fstat or skip_unchanged where recorded hash mtime -> new should have mtime
+    #
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[0]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512", collect_fstat=False, skip_unchanged=True)
+    assert include is ch.options['include_unchanged_files_incremental']
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+
+    # change hash so a new hf gets generated
+    bu_hash = most_current.entries[abs_fp].hash_bytes
+    most_current.entries[abs_fp].hash_bytes = binascii.a2b_hex(hash_str.replace('0', '2'))
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512", collect_fstat=True)
+    assert include is ch.options['include_unchanged_files_incremental']
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+    # restore!!
+    most_current.entries[abs_fp].hash_bytes = bu_hash
+
+    #
+    # hash recorded -> skip_unchanged -> same mtime skip file unless diff hash_type
+    #
+
+
+    caplog.clear()
+    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='Checksum_Helper')
+
+    ch.options['include_unchanged_files_incremental'] = False
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512", skip_unchanged=True)
+    assert include is False
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f"Skipping generation of a hash for file '{abs_fp}' since the mtime matches!"),
+    ]
+
+    # diff hash_type -> should still re-hash
+
+    caplog.clear()
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    # bu hash since it will get overwritten
+    bu_hash = most_current.entries[abs_fp].hash_bytes
+    include, generated = ch._build_verfiy_hash(abs_fp, "md5", skip_unchanged=True)
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "md5", binascii.a2b_hex("0cc175b9c0f1b6a831c399e269772661"), False))
+
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f"Skipping generation of a hash for file '{abs_fp}' since the mtime matches!"),
+        ('Checksum_Helper', LOG_LVL_VERBOSE, f"Recorded hash used sha512 as algorithm -> re-hashing with md5: {abs_fp}!"),
+    ]
+
+    # restore
+    ch.options['include_unchanged_files_incremental'] = True
+    most_current.entries[abs_fp].hash_bytes = bu_hash
+
+    #
+    # hash recorded -> no mtime -> same
+    #
+
+    caplog.clear()
+    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='Checksum_Helper')
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+
+    # NO mtime
+    most_current.entries[abs_fp].mtime = None
+
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512")
+    assert include is ch.options['include_unchanged_files_incremental']
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f"Old and new hashes match for file {abs_fp}!"),
+    ]
+
+    # restore
+    most_current.entries[abs_fp].mtime = mtime
+
+    #
+    # hash recorded -> no mtime -> changed
+    #
+
+    caplog.clear()
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    bu_hash = most_current.entries[abs_fp].hash_bytes
+    most_current.entries[abs_fp].hash_bytes = binascii.a2b_hex(hash_str.replace('0', '2').replace('a', 'd'))
+
+    # NO mtime
+    most_current.entries[abs_fp].mtime = None
+
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512", collect_fstat=False)
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, None, "sha512", binascii.a2b_hex(hash_str), False))
+
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.INFO, f"File \"{abs_fp}\" changed, a new hash was generated!"),
+    ]
+
+    # restore
+    most_current.entries[abs_fp].hash_bytes = bu_hash
+    most_current.entries[abs_fp].mtime = mtime
+
+    #
+    # hash recorded -> recorded mtime older -> changed
+    #
+
+    caplog.clear()
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    bu_hash = most_current.entries[abs_fp].hash_bytes
+    most_current.entries[abs_fp].hash_bytes = binascii.a2b_hex(hash_str.replace('0', '2').replace('a', 'd'))
+
+    # OLDER mtime
+    most_current.entries[abs_fp].mtime = mtime - 2
+
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512")
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.INFO, f"File \"{abs_fp}\" changed, a new hash was generated!"),
+    ]
+
+    # restore
+    most_current.entries[abs_fp].hash_bytes = bu_hash
+    most_current.entries[abs_fp].mtime = mtime
+
+    #
+    # hash recorded -> recorded mtime younger -> changed
+    #
+
+    caplog.clear()
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    bu_hash = most_current.entries[abs_fp].hash_bytes
+    most_current.entries[abs_fp].hash_bytes = binascii.a2b_hex(hash_str.replace('0', '2').replace('a', 'd'))
+
+    # OLDER mtime
+    most_current.entries[abs_fp].mtime = mtime + 2
+
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512")
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.INFO,
+            "File hashes don't match with the file on disk being older "
+            "than the recorded modfication time! The hash of the file "
+            f"on disk will be used: {abs_fp}")
+    ]
+
+    # restore
+    most_current.entries[abs_fp].hash_bytes = bu_hash
+    most_current.entries[abs_fp].mtime = mtime
+
+    #
+    # hash recorded -> recorded mtime same -> changed
+    #
+
+    caplog.clear()
+
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+    bu_hash = most_current.entries[abs_fp].hash_bytes
+    most_current.entries[abs_fp].hash_bytes = binascii.a2b_hex(hash_str.replace('0', '2').replace('a', 'd'))
+
+    include, generated = ch._build_verfiy_hash(abs_fp, "sha512")
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
+
+    assert caplog.record_tuples == [
+        ('Checksum_Helper', logging.WARNING, f"Unexpected change of file hash, when modification time is the same for file: {abs_fp}"),
+    ]
+
+    # restore
+    most_current.entries[abs_fp].hash_bytes = bu_hash
+
+    #
+    # hash recorded -> diff hash_types -> same + re-hash
+    #
+
+    caplog.clear()
+    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='Checksum_Helper')
+
+
+    # so normally matching hashes would result in not including the file
+    ch.options['include_unchanged_files_incremental'] = False
+    rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
+    abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
+
+    include, generated = ch._build_verfiy_hash(abs_fp, "md5")
+    assert include is True
+    assert generated.meta_eql(  # type: ignore
+            HashedFile(abs_fp, mtime, "md5", binascii.a2b_hex("0cc175b9c0f1b6a831c399e269772661"), False))
+
+    assert caplog.record_tuples == [
+            ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f'Old and new hashes match for file {abs_fp}!'),
+            ('Checksum_Helper', LOG_LVL_VERBOSE, f"Recorded hash used sha512 as algorithm -> re-hashing with md5: {abs_fp}!")
+    ]
+
+    # restore
+    ch.options['include_unchanged_files_incremental'] = True
+
+    #
+    # permission/file not found
+    #
+
+    include, generated = ch._build_verfiy_hash(os.path.join(root_dir, "fsadfasdf sadfs.txt"), "sha512")
+    assert include is False
+    assert generated is None
+
