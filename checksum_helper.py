@@ -379,7 +379,6 @@ class ChecksumHelper:
         }
 
     def discover_hash_files(self) -> None:
-        print("filter:", self.hash_filename_filter)
         hash_files = discover_hash_files(self.root_dir,
                                          depth=self.options["discover_hash_files_depth"],
                                          exclude_pattern=self.hash_filename_filter)
@@ -582,6 +581,7 @@ class ChecksumHelper:
                 logger.infov("Recorded hash used %s as algorithm -> re-hashing "  # type: ignore
                              "with %s: %s!", old.hash_type, algo_name, file_path)
                 new_hash = HashedFile.compute_file_hash(file_path, algo_name)
+                new = None  # so below creates new HashedFile with different hash type
                 include = True
 
             if include and new is None:
@@ -1164,7 +1164,14 @@ class ChecksumHelperData:
                 if not any(wildcard_match(pattern, rel_fpath) for pattern in whitelist):
                     continue
 
-            current = gen_hash_from_file(fpath, hashed_file.hash_type)
+            try:
+                current: Optional[bytes] = gen_hash_from_file(fpath, hashed_file.hash_type)
+            except FileNotFoundError:
+                current = None
+            except PermissionError:
+                logger.warning("Permission to open file '%s' was denied!", fpath)
+                current = None
+
             if current is None:
                 missing.append(rel_fpath)
                 logger.warning("%s: MISSING", rel_fpath)
@@ -1176,16 +1183,16 @@ class ChecksumHelperData:
                 logger.warning("%s: %s FAILED", rel_fpath, hashed_file.hash_type.upper())
 
         if matches and not crc_errors and not missing:
-            logger.info("No missing files and all files matching their hashes")
+            logger.info("%s: No missing files and all files matching their hashes", self.get_path())
         else:
             if matches and not crc_errors:
-                logger.info("All files matching their hashes!")
+                logger.info("%s: All files matching their hashes!", self.get_path())
             else:
-                logger.warning("%d files with wrong CRCs!", len(crc_errors))
+                logger.warning("%s: %d files with wrong CRCs!", self.get_path(), len(crc_errors))
             if not missing:
-                logger.info("No missing files!")
+                logger.info("%s: No missing files!", self.get_path())
             else:
-                logger.warning("%d missing files!", len(missing))
+                logger.warning("%s: %d missing files!", self.get_path(), len(missing))
         return crc_errors, missing, matches
 
 

@@ -27,9 +27,9 @@ def test_verify_hfile(caplog):
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
                                              % os.path.join(test_verify_root, "sub3", "sub2", "sub3_sub2.sha512")),
-        ('Checksum_Helper', logging.INFO, r'..\file1.txt: OK'),
-        ('Checksum_Helper', logging.WARNING, r'..\sub1\file1.txt: FAILED'),
-        ('Checksum_Helper', logging.INFO, r'file1.txt: OK'),
+        ('Checksum_Helper', logging.INFO, r'..\file1.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.WARNING, r'..\sub1\file1.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.INFO, r'file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, test_verify_root + r'\sub3\sub2\sub3_sub2.sha512: 1 files with wrong CRCs!'),
         ('Checksum_Helper', logging.INFO, test_verify_root + r'\sub3\sub2\sub3_sub2.sha512: No missing files!'),
     ]
@@ -44,9 +44,9 @@ def test_verify_hfile(caplog):
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.INFO, r'new 2.txt: OK'),
+        ('Checksum_Helper', logging.INFO, r'new 2.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'new 8.txt: MISSING'),
-        ('Checksum_Helper', logging.INFO, r'new 4.txt: OK'),
+        ('Checksum_Helper', logging.INFO, r'new 4.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, test_verify_root + r'\sub1\sub2\sub2_1miss.sha512: All files matching their hashes!'),
         ('Checksum_Helper', logging.WARNING, test_verify_root + r'\sub1\sub2\sub2_1miss.sha512: 1 missing files!'),
     ]
@@ -63,9 +63,9 @@ def test_verify_hfile(caplog):
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.INFO, r'new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'new 4.txt: OK'),
+        ('Checksum_Helper', logging.INFO, r'new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'new 4.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, test_verify_root + r'\sub1\sub2\sub2.sha512: No missing files and all files matching their hashes'),
     ]
 
@@ -81,15 +81,15 @@ def test_verify_hfile(caplog):
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, r'new 3.txt: FAILED'),
-        ('Checksum_Helper', logging.INFO, r'new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: OK'),
-        ('Checksum_Helper', logging.WARNING, r'sub1\sub2\new 4.txt: FAILED'),
-        ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: OK'),
+        ('Checksum_Helper', logging.WARNING, r'new 3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.INFO, r'new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.WARNING, r'sub1\sub2\new 4.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub5\sub1\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub6\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, test_verify_root + r'\sub1+2_n3+4.sha512: 2 files with wrong CRCs!'),
@@ -122,8 +122,8 @@ def test_verify_all(caplog):
         ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub5\sub1\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub6\file1.txt: MISSING'),
-        ('Checksum_Helper', logging.WARNING, r'2 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.WARNING, r'2 missing files!'),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 files with wrong CRCs!"),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 missing files!"),
     ]
 
     # ------------ all matching, 1 missing, most_current single hash file ----------
@@ -133,9 +133,9 @@ def test_verify_all(caplog):
     caplog.clear()
     assert _cl_verify_all(a) == (4, 3, 1, 0)
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.INFO, r'new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'new 4.txt: OK'),
+        ('Checksum_Helper', logging.INFO, r'new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'new 4.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'new 8.txt: MISSING'),
         ('Checksum_Helper', logging.INFO, root_dir + '\\' + f'sub2_most_current_{time.strftime("%Y-%m-%d")}.sha512: All files matching their hashes!'),
         ('Checksum_Helper', logging.WARNING, root_dir + '\\' + f'sub2_most_current_{time.strftime("%Y-%m-%d")}.sha512: 1 missing files!'),
@@ -168,8 +168,8 @@ def test_verify_all(caplog):
         ('Checksum_Helper', logging.WARNING, r'sub5\sub1\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub6\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub1\sub2\new 8.txt: MISSING'),
-        ('Checksum_Helper', logging.WARNING, r'2 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.WARNING, r'3 missing files!'),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 files with wrong CRCs!"),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 missing files!"),
     ]
 
     # ------------ 2 wrong crc, 3 missing, HashFile, md5 filtered  ----------
@@ -185,23 +185,23 @@ def test_verify_all(caplog):
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
                                              % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
-        ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: OK'),
-        ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: FAILED'),
-        ('Checksum_Helper', logging.INFO, r'sub3\sub2\file1.txt: OK'),
-        ('Checksum_Helper', logging.WARNING, r'new 3.txt: FAILED'),
-        ('Checksum_Helper', logging.INFO, r'new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: OK'),
+        ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.INFO, r'sub3\sub2\file1.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.WARNING, r'new 3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.INFO, r'new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub5\sub1\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub6\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub1\sub2\new 8.txt: MISSING'),
-        ('Checksum_Helper', logging.WARNING, root_dir + '\\' + f'tt_most_current_{time.strftime("%Y-%m-%d")}.sha512: 2 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.WARNING, root_dir + '\\' + f'tt_most_current_{time.strftime("%Y-%m-%d")}.sha512: 3 missing files!'),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 2 files with wrong CRCs!"),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 3 missing files!"),
     ]
 
 
@@ -230,8 +230,8 @@ def test_verify_filter(caplog):
         ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub1\sub2\new 4.txt: SHA512 FAILED'),
-        ('Checksum_Helper', logging.WARNING, r'2 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.INFO, r'No missing files!'),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 files with wrong CRCs!"),
+        ('Checksum_Helper', logging.INFO, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: No missing files!"),
     ]
 
     # ------------ 1 crc err, 1 missing, MixedAlgo ----------
@@ -255,8 +255,8 @@ def test_verify_filter(caplog):
         ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub5\sub1\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub6\file1.txt: MISSING'),
-        ('Checksum_Helper', logging.WARNING, r'1 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.WARNING, r'2 missing files!'),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 1 files with wrong CRCs!"),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 missing files!"),
     ]
 
     # ------------ 2 wrong crc, 3 missing, HashFile, md5 filtered  ----------
@@ -276,21 +276,21 @@ def test_verify_filter(caplog):
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
                                              % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
-        ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: OK'),
-        ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: FAILED'),
-        ('Checksum_Helper', logging.INFO, r'sub3\sub2\file1.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: OK'),
+        ('Checksum_Helper', logging.INFO, r'sub3\file1.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.WARNING, r'sub3\sub1\file1.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.INFO, r'sub3\sub2\file1.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub2\sub1\file1.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub5\sub1\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub6\file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, r'sub1\sub2\new 8.txt: MISSING'),
-        ('Checksum_Helper', logging.WARNING, root_dir + '\\' + f'tt_most_current_{time.strftime("%Y-%m-%d")}.sha512: 1 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.WARNING, root_dir + '\\' + f'tt_most_current_{time.strftime("%Y-%m-%d")}.sha512: 3 missing files!'),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 1 files with wrong CRCs!"),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 3 missing files!"),
     ]
 
 
@@ -310,15 +310,15 @@ def test_verify_filter(caplog):
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
                                              % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
-        ('Checksum_Helper', logging.WARNING, r'new 3.txt: FAILED'),
-        ('Checksum_Helper', logging.INFO, r'new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: OK'),
-        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 4.txt: OK'),
+        ('Checksum_Helper', logging.WARNING, r'new 3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.INFO, r'new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\new 4.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 2.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 3.txt: SHA512 OK'),
+        ('Checksum_Helper', logging.INFO, r'sub1\sub2\new 4.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, r'sub1\sub2\new 8.txt: MISSING'),
-        ('Checksum_Helper', logging.WARNING, root_dir + '\\' + f'tt_most_current_{time.strftime("%Y-%m-%d")}.sha512: 1 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.WARNING, root_dir + '\\' + f'tt_most_current_{time.strftime("%Y-%m-%d")}.sha512: 1 missing files!'),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 1 files with wrong CRCs!"),
+        ('Checksum_Helper', logging.WARNING, f"{root_dir}\\tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 1 missing files!"),
     ]
