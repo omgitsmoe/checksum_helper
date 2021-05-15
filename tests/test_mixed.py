@@ -5,7 +5,7 @@ import pytest
 
 from utils import TESTS_DIR, setup_tmpdir_param, Args
 
-from checksum_helper import split_path, move_fpath, HashedFile, gen_hash_from_file, ChecksumHelper, AbspathDrivesDontMatch, _cl_copy, discover_hash_files
+from checksum_helper import split_path, move_fpath, HashedFile, gen_hash_from_file, ChecksumHelper, AbspathDrivesDontMatch, _cl_copy, discover_hash_files, ChecksumHelperData
 
 
 @pytest.mark.parametrize(
@@ -63,61 +63,45 @@ def test_move_fpath(test_input, expected):
     assert move_fpath(*test_input) == expected
 
 
-def test_copyto(setup_tmpdir_param, monkeypatch, caplog):
+def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
     tmpdir = setup_tmpdir_param
     root_dir = os.path.join(tmpdir, "tt")
     shutil.copytree(os.path.join(TESTS_DIR, "test_copyto_files", "tt"),
                     os.path.join(root_dir))
+
+    with open(os.path.join(TESTS_DIR, "test_copyto_files", "tt", "tt.sha512"), 'r', encoding='utf-8-sig') as f:
+        orig = f.read()
 
     # set input to automatically answer with y so we write the file when asked
     monkeypatch.setattr('builtins.input', lambda x: "y")
     a = Args(source_path=os.path.join(root_dir, "tt.sha512"),
              dest_path=".\\sub2\\tt_moved.sha512")
     hf = _cl_copy(a)
-    # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub2", "tt_moved.sha512"))
-    # make sure hash_file_dir and filename were also updated
-    assert hf.hash_file_dir == os.path.join(root_dir, "sub2")
-    assert hf.filename == "tt_moved.sha512"
-    # make sure all paths are properly normalized so we dont have get sth like this:
-    # C://test//abc//123//..//.//file.txt
-    assert all(p == os.path.normpath(p) for p in hf.filename_hash_dict.keys())
-    # verifying the paths and hash strings are still correct by directly looping over
-    # the filename_hash_dict
-    for fpath, hash_str in hf.filename_hash_dict.items():
-        assert gen_hash_from_file(fpath, "sha512") == hash_str
+
+    with open(os.path.join(root_dir, "sub2", "tt_moved.sha512"), 'r', encoding='utf-8-sig') as f:
+        moved = f.read()
+    expected = orig.replace("*n", "*..\\n").replace("*sub2\\", "*").replace("*sub1", "*..\\sub1")
+    assert expected == moved
+
+    # TODO compare file contents
 
     a = Args(source_path=os.path.join(root_dir, "sub2", "tt_moved.sha512"),
              dest_path="..\\sub1\\sub2\\tt_moved2.sha512")
     hf = _cl_copy(a)
-    # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"))
-    # make sure hash_file_dir and filename were also updated
-    assert hf.hash_file_dir == os.path.join(root_dir, "sub1", "sub2")
-    assert hf.filename == "tt_moved2.sha512"
-    # make sure all paths are properly normalized so we dont have get sth like this:
-    # C://test//abc//123//..//.//file.txt
-    assert all(p == os.path.normpath(p) for p in hf.filename_hash_dict.keys())
-    # verifying the paths and hash strings are still correct by directly looping over
-    # the filename_hash_dict
-    for fpath, hash_str in hf.filename_hash_dict.items():
-        assert gen_hash_from_file(fpath, "sha512") == hash_str
+
+    with open(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"), 'r', encoding='utf-8-sig') as f:
+        moved = f.read()
+    expected = orig.replace("*n", "*..\\..\\n").replace("*sub2\\", "*..\\..\\sub2\\").replace(
+            "*sub1\\sub2\\", "*").replace("*sub1\\", "*..\\")
+    assert expected == moved
 
     a = Args(source_path=os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"),
              dest_path="..\\.\\tt_moved3.sha512")
     hf = _cl_copy(a)
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved3.sha512"))
-    # make sure hash_file_dir and filename were also updated
-    assert hf.hash_file_dir == os.path.join(root_dir, "sub1")
-    assert hf.filename == "tt_moved3.sha512"
-    # make sure all paths are properly normalized so we dont have get sth like this:
-    # C://test//abc//123//..//.//file.txt
-    assert all(p == os.path.normpath(p) for p in hf.filename_hash_dict.keys())
-    # verifying the paths and hash strings are still correct by directly looping over
-    # the filename_hash_dict
-    for fpath, hash_str in hf.filename_hash_dict.items():
-        assert gen_hash_from_file(fpath, "sha512") == hash_str
 
     caplog.set_level(logging.INFO)
     # clear logging records
@@ -161,26 +145,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
 
     # even if we have 2 abspath in there we only warn once!
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, r'Found absolute path in hash file: {}\warn.sha512'.format(tmpdir)),
-    ]
-
-    caplog.clear()
-    checksum_hlpr = ChecksumHelper(os.path.join(TESTS_DIR, "test_abspath_warn_files"),
-                                   hash_filename_filter=())
-    # so we dont accidentally hit a drive that the test is run on try multiple
-    drives = "TUVWXYZ"
-    excp_msg_expected = "Drive letters of the hash file '{}\\test_abspath_warn_files\\crash.sha512' and the absolute path '{}:\\sub1\\new 2.txt' don't match! This needs to be fixed manually!"
-    excp_msgs = [excp_msg_expected.format(TESTS_DIR, d) for d in drives]
-    # match=excp_msg makes sure the exception message matches ^^
-    with pytest.raises(AbspathDrivesDontMatch) as excp:
-        checksum_hlpr.build_most_current()
-    # assert we match any exception message with the possible drive letters inserted
-    # we can use str(excp) to access the msg but then it starts with the path and the line number
-    # or we can use str(excp.value) or excp.value.args[0] then its just the msg but the latter
-    # might not include the whole msg?
-    assert any([e_msg == str(excp.value) for e_msg in excp_msgs])
-    assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, r'Found absolute path in hash file: {}\crash.sha512'.format(os.path.join(TESTS_DIR, "test_abspath_warn_files"))),
+        ('Checksum_Helper', logging.WARNING, r'Read failed! Found absolute path in hash file: {}\warn.sha512'.format(tmpdir)),
     ]
 
 
@@ -207,7 +172,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
                 r"sub3\sub1\ebook-2016-jan.sha512",
                 r"sub3\sub2\ebook-2016-05.sha512",
                 r"sub3\sub2\ebooks-2017-12.md5",
-                r"sub4\em-v2bgufjgpki0315.crc",
+                # r"sub4\em-v2bgufjgpki0315.crc",
                 r"sub4\sub1\backup-moved-2019-07-19.sha512",
                 r"thumbs.sha512",
                 )
@@ -231,7 +196,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
                 r"sub3\Important Backups-2016-07-09.sha512",
                 r"sub3\Important Backups-2017-07-24.sha512",
                 r"sub3\Important Backups-2018-03-11.sha512",
-                r"sub4\em-v2bgufjgpki0315.crc",
+                # r"sub4\em-v2bgufjgpki0315.crc",
                 r"thumbs.sha512",
                 )
         ),
@@ -248,7 +213,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
                 r"sub3\Important Backups-2017-07-24.sha512",
                 r"sub3\Important Backups-2018-03-11.sha512",
                 r"sub3\sub2\ebooks-2017-12.md5",
-                r"sub4\em-v2bgufjgpki0315.crc",
+                # r"sub4\em-v2bgufjgpki0315.crc",
                 r"sub4\sub1\backup-moved-2019-07-19.sha512",
                 r"thumbs.sha512",
                 )
@@ -263,7 +228,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
                 r"sub3\sub1\ebook-2016-jan.sha512",
                 r"sub3\sub2\ebook-2016-05.sha512",
                 r"sub3\sub2\ebooks-2017-12.md5",
-                r"sub4\em-v2bgufjgpki0315.crc",
+                # r"sub4\em-v2bgufjgpki0315.crc",
                 r"thumbs.sha512",
                 )
         ),
@@ -281,7 +246,7 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
                 r"sub3\sub1\ebook-2016-jan.sha512",
                 r"sub3\sub2\ebook-2016-05.sha512",
                 r"sub3\sub2\ebooks-2017-12.md5",
-                r"sub4\em-v2bgufjgpki0315.crc",
+                # r"sub4\em-v2bgufjgpki0315.crc",
                 r"sub4\sub1\backup-moved-2019-07-19.sha512",
                 )
         ),
@@ -297,12 +262,12 @@ def test_warn_pardir(caplog):
     root_dir = os.path.join(TESTS_DIR, "test_mixed_files", "warn_pardir")
     caplog.clear()
     caplog.set_level(logging.WARNING, logger='Checksum_Helper')
-    hf = HashFile(None, os.path.join(root_dir, "ok.sha512"))
+    hf = ChecksumHelperData(None, os.path.join(root_dir, "ok.sha512"))
     hf.read()
     assert caplog.record_tuples == []
 
     caplog.clear()
-    hf = HashFile(None, os.path.join(root_dir, "warn.sha512"))
+    hf = ChecksumHelperData(None, os.path.join(root_dir, "warn.sha512"))
     hf.read()
     assert caplog.record_tuples == [
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "

@@ -1055,22 +1055,6 @@ class ChecksumHelperData:
 
         return write_file
 
-    def set_filename(self, filename: str) -> None:
-        _, ext = os.path.splitext(filename)
-        if not ext or ext == ".cshd":
-            self.single_hash = False
-            self.hash_type = None
-        else:
-            hash_type = ext[1:]
-            if hash_type not in hashlib.algorithms_available:
-                logger.error("Could not rename file to have extension '%s' since it is not a "
-                             "supported (by hashlib) hash algorithm!", hash_type)
-                return None
-            else:
-                self.to_single_hash_file(hash_type)
-
-        self.relocate(filename)
-
     def to_single_hash_file(self, hash_type: str) -> None:
         # if not self.single_hash:
         #     print("File contains multiple hash algorithms but is supposed to be "
@@ -1101,6 +1085,10 @@ class ChecksumHelperData:
         self.hash_type = hash_type
 
     def relocate(self, mv_path: str) -> Tuple[Optional[str], Optional[str]]:
+        """Converts mv_path into an absolut path and performing some additional checks
+        whether the relocation is valid; Doesnt modfiy anthing in self.entires etc. unless
+        the file was renamed to single hash file (e.g. '.sha512') then the hashed files
+        in other hash types will be re-hashed"""
         # error when trying to move to diff drive
         if os.path.isabs(mv_path) and (
                 os.path.splitdrive(self.root_dir)[0].lower() !=
@@ -1115,9 +1103,23 @@ class ChecksumHelperData:
             return None, None
         new_hash_file_dir, new_filename = os.path.split(new_moved_path)
 
+        _, ext = os.path.splitext(new_filename)
+        if not ext or ext == ".cshd":
+            self.single_hash = False
+            self.hash_type = None
+        else:
+            hash_type = ext[1:]
+            if hash_type not in hashlib.algorithms_available:
+                logger.error("Could not rename file to have extension '%s' since it is not a "
+                             "supported (by hashlib) hash algorithm!", hash_type)
+                return None, None
+            else:
+                self.to_single_hash_file(hash_type)
+
         # we dont need to modify our file paths in self.entries since
         # we're using absolute paths anyway
         self.root_dir, self.filename = new_hash_file_dir, new_filename
+
         return new_hash_file_dir, new_filename
     
     def copy_to(self, mv_path: str) -> None:
@@ -1323,7 +1325,7 @@ def _cl_build_most_current(args: argparse.Namespace) -> None:
         if not args.dont_filter_deleted:
             c.hash_file_most_current.filter_deleted_files()
         if args.out_filename:
-            c.hash_file_most_current.set_filename(args.out_filename)
+            c.hash_file_most_current.relocate(args.out_filename)
         c.hash_file_most_current.write()
     else:
         logger.error("Could not build most current hash file data for: %s", args.path)
