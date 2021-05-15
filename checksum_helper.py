@@ -366,9 +366,9 @@ class ChecksumHelper:
             self.hash_filename_filter = ()
         elif isinstance(hash_filename_filter, str):
             # ("md5") is NOT a tuple its a string ("md5",) IS a tuple (mind the comma!)
-            self.hash_filename_filter = (hash_filename_filter,)
+            self.hash_filename_filter = (hash_filename_filter.replace(os.altsep, os.sep),)
         else:
-            self.hash_filename_filter = hash_filename_filter
+            self.hash_filename_filter = tuple(s.replace(os.altsep, os.sep) for s in hash_filename_filter)
 
         self.options: CHOptions = {
             "include_unchanged_files_incremental": True,
@@ -1437,7 +1437,7 @@ def _cl_verify_filter(args: argparse.Namespace) -> None:
     c.build_most_current()
     # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
     cast(ChecksumHelperData,
-         c.hash_file_most_current).verify(whitelist=args.filter)
+         c.hash_file_most_current).verify(whitelist=[x.replace(os.altsep, os.sep) for x in args.filter])
 
 
 class SmartFormatter(argparse.HelpFormatter):
@@ -1611,5 +1611,5 @@ if __name__ == "__main__":
         alt = '/' if os.sep == '\\' else '\\'
         args.whitelist = [pat.replace(alt, os.sep) for pat in args.whitelist] if args.whitelist else None
         args.blacklist = [pat.replace(alt, os.sep) for pat in args.blacklist] if args.blacklist else None
-
+    
     args.func(args)

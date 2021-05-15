@@ -70,35 +70,34 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
                     os.path.join(root_dir))
 
     with open(os.path.join(TESTS_DIR, "test_copyto_files", "tt", "tt.sha512"), 'r', encoding='utf-8-sig') as f:
-        orig = f.read()
+        orig = f.read().replace("\\", os.sep)
 
     # set input to automatically answer with y so we write the file when asked
     monkeypatch.setattr('builtins.input', lambda x: "y")
     a = Args(source_path=os.path.join(root_dir, "tt.sha512"),
-             dest_path=".\\sub2\\tt_moved.sha512")
+             dest_path=f".{os.sep}sub2{os.sep}tt_moved.sha512")
     hf = _cl_copy(a)
     assert os.path.isfile(os.path.join(root_dir, "sub2", "tt_moved.sha512"))
 
     with open(os.path.join(root_dir, "sub2", "tt_moved.sha512"), 'r', encoding='utf-8-sig') as f:
         moved = f.read()
-    expected = orig.replace("*n", "*..\\n").replace("*sub2\\", "*").replace("*sub1", "*..\\sub1")
+    expected = orig.replace("*n", f"*..{os.sep}n").replace(
+            f"*sub2{os.sep}", "*").replace("*sub1", f"*..{os.sep}sub1")
     assert expected == moved
 
-    # TODO compare file contents
-
     a = Args(source_path=os.path.join(root_dir, "sub2", "tt_moved.sha512"),
-             dest_path="..\\sub1\\sub2\\tt_moved2.sha512")
+             dest_path=f"..{os.sep}sub1{os.sep}sub2{os.sep}tt_moved2.sha512")
     hf = _cl_copy(a)
     assert os.path.isfile(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"))
 
     with open(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"), 'r', encoding='utf-8-sig') as f:
         moved = f.read()
-    expected = orig.replace("*n", "*..\\..\\n").replace("*sub2\\", "*..\\..\\sub2\\").replace(
-            "*sub1\\sub2\\", "*").replace("*sub1\\", "*..\\")
+    expected = orig.replace("*n", f"*..{os.sep}..{os.sep}n").replace(f"*sub2{os.sep}", f"*..{os.sep}..{os.sep}sub2{os.sep}").replace(
+            f"*sub1{os.sep}sub2{os.sep}", "*").replace(f"*sub1{os.sep}", f"*..{os.sep}")
     assert expected == moved
 
     a = Args(source_path=os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"),
-             dest_path="..\\.\\tt_moved3.sha512")
+             dest_path=f"..{os.sep}.{os.sep}tt_moved3.sha512")
     hf = _cl_copy(a)
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved3.sha512"))
@@ -108,7 +107,7 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
     caplog.clear()
     # fault mv_path
     a = Args(source_path=os.path.join(root_dir, "sub1", "tt_moved3.sha512"),
-             dest_path="..\\\\tt_moved4.sha512")
+             dest_path=f"..{os.sep}{os.sep}tt_moved4.sha512")
     hf = _cl_copy(a)
     # no file written
     assert not os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved4.sha512"))
@@ -116,8 +115,8 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!" % hf.get_path()),
-        ('Checksum_Helper', logging.WARNING, r'Error: Two following separators in path: ..\\tt_moved4.sha512'),
-        ('Checksum_Helper', logging.WARNING, r"Move path '..\\tt_moved4.sha512' was in the wrong format!"),
+        ('Checksum_Helper', logging.WARNING, f'Error: Two following separators in path: ..{os.sep}{os.sep}tt_moved4.sha512'),
+        ('Checksum_Helper', logging.WARNING, f"Move path '..{os.sep}{os.sep}tt_moved4.sha512' was in the wrong format!"),
         ('Checksum_Helper', logging.ERROR, r"Couldn't move file due to a faulty move path!"),
         ('Checksum_Helper', logging.WARNING, r"Hash file was NOT copied!"),
 
@@ -130,9 +129,9 @@ def test_warn_abspath(setup_tmpdir_param, monkeypatch, caplog):
     monkeypatch.setattr('builtins.input', lambda x: "n")
     # we have to generate the warn.sha512 dynamically so we're on the same drive
     dyn_abspath = os.path.abspath(root_dir)
-    warn_hf = """f6c5600ed1dbdcfdf829081f5417dccbbd2b9288e0b427e65c8cf67e274b69009cd142475e15304f599f429f260a661b5df4de26746459a3cef7f32006e5d1c1 *new 2.txt
-5267768822ee624d48fce15ec5ca79cbd602cb7f4c2157a516556991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da *{dyn_abspath}\\new 3.txt
-e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d35249c009b66834ec2d53894915c25bfa8b6cae0db91f4ceb261 *{dyn_abspath}\\new 4.txt""".format(dyn_abspath=dyn_abspath)
+    warn_hf = f"""f6c5600ed1dbdcfdf829081f5417dccbbd2b9288e0b427e65c8cf67e274b69009cd142475e15304f599f429f260a661b5df4de26746459a3cef7f32006e5d1c1 *new 2.txt
+5267768822ee624d48fce15ec5ca79cbd602cb7f4c2157a516556991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da *{dyn_abspath}{os.sep}new 3.txt
+e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d35249c009b66834ec2d53894915c25bfa8b6cae0db91f4ceb261 *{dyn_abspath}{os.sep}new 4.txt""".format(dyn_abspath=dyn_abspath)
     with open(os.path.join(root_dir, "warn.sha512"), "w", encoding="UTF-8-SIG") as w:
         w.write(warn_hf)
 
@@ -145,7 +144,8 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
 
     # even if we have 2 abspath in there we only warn once!
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, r'Read failed! Found absolute path in hash file: {}\warn.sha512'.format(tmpdir)),
+        ('Checksum_Helper', logging.WARNING,
+         f'Read failed! Found absolute path in hash file: {tmpdir}{os.sep}warn.sha512'),
     ]
 
 
@@ -153,101 +153,101 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
         "depth, exclude, expected",
         [
             (-1, None, (
-                r"HDDCol_2019-07-12.sha256",
-                r"infodump_2019-04-06.sha512",
-                r"picsonly-2016-08-23.md5",
-                r"sub1\Important Backups-2016-08-21.sha512",
-                r"sub1\Important Backups-2017-12-18.md5",
-                r"sub1\Important Backups-2018-07-02.sha512",
-                r"sub1\sub2\backup_2019-07-20.sha512",
-                r"sub1\sub2\backup_most_current_2019-07-19.sha512",
-                r"sub1\sub2\backup-add-2019-07-20.sha256",
-                r"sub2\catalog-2016-05-04.sha512",
-                r"sub2\catalog-2017-10-28.sha512",
-                r"sub2\sub1\picsonly-2015-11-18.sha512",
-                r"sub2\sub1\picsonly-2016-05-04.sha512",
-                r"sub3\Important Backups-2016-07-09.sha512",
-                r"sub3\Important Backups-2017-07-24.sha512",
-                r"sub3\Important Backups-2018-03-11.sha512",
-                r"sub3\sub1\ebook-2016-jan.sha512",
-                r"sub3\sub2\ebook-2016-05.sha512",
-                r"sub3\sub2\ebooks-2017-12.md5",
-                # r"sub4\em-v2bgufjgpki0315.crc",
-                r"sub4\sub1\backup-moved-2019-07-19.sha512",
-                r"thumbs.sha512",
+                f"HDDCol_2019-07-12.sha256",
+                f"infodump_2019-04-06.sha512",
+                f"picsonly-2016-08-23.md5",
+                f"sub1{os.sep}Important Backups-2016-08-21.sha512",
+                f"sub1{os.sep}Important Backups-2017-12-18.md5",
+                f"sub1{os.sep}Important Backups-2018-07-02.sha512",
+                f"sub1{os.sep}sub2{os.sep}backup_2019-07-20.sha512",
+                f"sub1{os.sep}sub2{os.sep}backup_most_current_2019-07-19.sha512",
+                f"sub1{os.sep}sub2{os.sep}backup-add-2019-07-20.sha256",
+                f"sub2{os.sep}catalog-2016-05-04.sha512",
+                f"sub2{os.sep}catalog-2017-10-28.sha512",
+                f"sub2{os.sep}sub1{os.sep}picsonly-2015-11-18.sha512",
+                f"sub2{os.sep}sub1{os.sep}picsonly-2016-05-04.sha512",
+                f"sub3{os.sep}Important Backups-2016-07-09.sha512",
+                f"sub3{os.sep}Important Backups-2017-07-24.sha512",
+                f"sub3{os.sep}Important Backups-2018-03-11.sha512",
+                f"sub3{os.sep}sub1{os.sep}ebook-2016-jan.sha512",
+                f"sub3{os.sep}sub2{os.sep}ebook-2016-05.sha512",
+                f"sub3{os.sep}sub2{os.sep}ebooks-2017-12.md5",
+                # f"sub4{os.sep}em-v2bgufjgpki0315.crc",
+                f"sub4{os.sep}sub1{os.sep}backup-moved-2019-07-19.sha512",
+                f"thumbs.sha512",
                 )
         ),
             (0, None, (
-                r"HDDCol_2019-07-12.sha256",
-                r"infodump_2019-04-06.sha512",
-                r"picsonly-2016-08-23.md5",
-                r"thumbs.sha512",
+                f"HDDCol_2019-07-12.sha256",
+                f"infodump_2019-04-06.sha512",
+                f"picsonly-2016-08-23.md5",
+                f"thumbs.sha512",
                 )
         ),
             (1, None, (
-                r"HDDCol_2019-07-12.sha256",
-                r"infodump_2019-04-06.sha512",
-                r"picsonly-2016-08-23.md5",
-                r"sub1\Important Backups-2016-08-21.sha512",
-                r"sub1\Important Backups-2017-12-18.md5",
-                r"sub1\Important Backups-2018-07-02.sha512",
-                r"sub2\catalog-2016-05-04.sha512",
-                r"sub2\catalog-2017-10-28.sha512",
-                r"sub3\Important Backups-2016-07-09.sha512",
-                r"sub3\Important Backups-2017-07-24.sha512",
-                r"sub3\Important Backups-2018-03-11.sha512",
-                # r"sub4\em-v2bgufjgpki0315.crc",
-                r"thumbs.sha512",
+                f"HDDCol_2019-07-12.sha256",
+                f"infodump_2019-04-06.sha512",
+                f"picsonly-2016-08-23.md5",
+                f"sub1{os.sep}Important Backups-2016-08-21.sha512",
+                f"sub1{os.sep}Important Backups-2017-12-18.md5",
+                f"sub1{os.sep}Important Backups-2018-07-02.sha512",
+                f"sub2{os.sep}catalog-2016-05-04.sha512",
+                f"sub2{os.sep}catalog-2017-10-28.sha512",
+                f"sub3{os.sep}Important Backups-2016-07-09.sha512",
+                f"sub3{os.sep}Important Backups-2017-07-24.sha512",
+                f"sub3{os.sep}Important Backups-2018-03-11.sha512",
+                # f"sub4{os.sep}em-v2bgufjgpki0315.crc",
+                f"thumbs.sha512",
                 )
         ),
             (-1, ("*2016*",), (
-                r"HDDCol_2019-07-12.sha256",
-                r"infodump_2019-04-06.sha512",
-                r"sub1\Important Backups-2017-12-18.md5",
-                r"sub1\Important Backups-2018-07-02.sha512",
-                r"sub1\sub2\backup_2019-07-20.sha512",
-                r"sub1\sub2\backup_most_current_2019-07-19.sha512",
-                r"sub1\sub2\backup-add-2019-07-20.sha256",
-                r"sub2\catalog-2017-10-28.sha512",
-                r"sub2\sub1\picsonly-2015-11-18.sha512",
-                r"sub3\Important Backups-2017-07-24.sha512",
-                r"sub3\Important Backups-2018-03-11.sha512",
-                r"sub3\sub2\ebooks-2017-12.md5",
-                # r"sub4\em-v2bgufjgpki0315.crc",
-                r"sub4\sub1\backup-moved-2019-07-19.sha512",
-                r"thumbs.sha512",
+                f"HDDCol_2019-07-12.sha256",
+                f"infodump_2019-04-06.sha512",
+                f"sub1{os.sep}Important Backups-2017-12-18.md5",
+                f"sub1{os.sep}Important Backups-2018-07-02.sha512",
+                f"sub1{os.sep}sub2{os.sep}backup_2019-07-20.sha512",
+                f"sub1{os.sep}sub2{os.sep}backup_most_current_2019-07-19.sha512",
+                f"sub1{os.sep}sub2{os.sep}backup-add-2019-07-20.sha256",
+                f"sub2{os.sep}catalog-2017-10-28.sha512",
+                f"sub2{os.sep}sub1{os.sep}picsonly-2015-11-18.sha512",
+                f"sub3{os.sep}Important Backups-2017-07-24.sha512",
+                f"sub3{os.sep}Important Backups-2018-03-11.sha512",
+                f"sub3{os.sep}sub2{os.sep}ebooks-2017-12.md5",
+                # f"sub4{os.sep}em-v2bgufjgpki0315.crc",
+                f"sub4{os.sep}sub1{os.sep}backup-moved-2019-07-19.sha512",
+                f"thumbs.sha512",
                 )
         ),
             (-1, ("*.sha256", "*?ackup*"), (
-                r"infodump_2019-04-06.sha512",
-                r"picsonly-2016-08-23.md5",
-                r"sub2\catalog-2016-05-04.sha512",
-                r"sub2\catalog-2017-10-28.sha512",
-                r"sub2\sub1\picsonly-2015-11-18.sha512",
-                r"sub2\sub1\picsonly-2016-05-04.sha512",
-                r"sub3\sub1\ebook-2016-jan.sha512",
-                r"sub3\sub2\ebook-2016-05.sha512",
-                r"sub3\sub2\ebooks-2017-12.md5",
-                # r"sub4\em-v2bgufjgpki0315.crc",
-                r"thumbs.sha512",
+                f"infodump_2019-04-06.sha512",
+                f"picsonly-2016-08-23.md5",
+                f"sub2{os.sep}catalog-2016-05-04.sha512",
+                f"sub2{os.sep}catalog-2017-10-28.sha512",
+                f"sub2{os.sep}sub1{os.sep}picsonly-2015-11-18.sha512",
+                f"sub2{os.sep}sub1{os.sep}picsonly-2016-05-04.sha512",
+                f"sub3{os.sep}sub1{os.sep}ebook-2016-jan.sha512",
+                f"sub3{os.sep}sub2{os.sep}ebook-2016-05.sha512",
+                f"sub3{os.sep}sub2{os.sep}ebooks-2017-12.md5",
+                # f"sub4{os.sep}em-v2bgufjgpki0315.crc",
+                f"thumbs.sha512",
                 )
         ),
-            (-1, ("sub1\\*", "thumbs.sha512"), (
-                r"HDDCol_2019-07-12.sha256",
-                r"infodump_2019-04-06.sha512",
-                r"picsonly-2016-08-23.md5",
-                r"sub2\catalog-2016-05-04.sha512",
-                r"sub2\catalog-2017-10-28.sha512",
-                r"sub2\sub1\picsonly-2015-11-18.sha512",
-                r"sub2\sub1\picsonly-2016-05-04.sha512",
-                r"sub3\Important Backups-2016-07-09.sha512",
-                r"sub3\Important Backups-2017-07-24.sha512",
-                r"sub3\Important Backups-2018-03-11.sha512",
-                r"sub3\sub1\ebook-2016-jan.sha512",
-                r"sub3\sub2\ebook-2016-05.sha512",
-                r"sub3\sub2\ebooks-2017-12.md5",
-                # r"sub4\em-v2bgufjgpki0315.crc",
-                r"sub4\sub1\backup-moved-2019-07-19.sha512",
+            (-1, (f"sub1{os.sep}*", "thumbs.sha512"), (
+                f"HDDCol_2019-07-12.sha256",
+                f"infodump_2019-04-06.sha512",
+                f"picsonly-2016-08-23.md5",
+                f"sub2{os.sep}catalog-2016-05-04.sha512",
+                f"sub2{os.sep}catalog-2017-10-28.sha512",
+                f"sub2{os.sep}sub1{os.sep}picsonly-2015-11-18.sha512",
+                f"sub2{os.sep}sub1{os.sep}picsonly-2016-05-04.sha512",
+                f"sub3{os.sep}Important Backups-2016-07-09.sha512",
+                f"sub3{os.sep}Important Backups-2017-07-24.sha512",
+                f"sub3{os.sep}Important Backups-2018-03-11.sha512",
+                f"sub3{os.sep}sub1{os.sep}ebook-2016-jan.sha512",
+                f"sub3{os.sep}sub2{os.sep}ebook-2016-05.sha512",
+                f"sub3{os.sep}sub2{os.sep}ebooks-2017-12.md5",
+                # f"sub4{os.sep}em-v2bgufjgpki0315.crc",
+                f"sub4{os.sep}sub1{os.sep}backup-moved-2019-07-19.sha512",
                 )
         ),
         ]

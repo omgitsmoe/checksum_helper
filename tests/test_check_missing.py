@@ -20,8 +20,8 @@ def test_check_missing(capsys):
 
     checksum_hlpr.check_missing_files()
 
-    missing = ["D    sub4", "D    sub3\\sub1", "D    sub3\\sub2", "F    new 2.txt",
-               "F    sub1\\sub2\\new 2.txt", "F    missing.sha512"]
+    missing = ["D    sub4", f"D    sub3{os.sep}sub1", f"D    sub3{os.sep}sub2", "F    new 2.txt",
+               f"F    sub1{os.sep}sub2{os.sep}new 2.txt", "F    missing.sha512"]
     # CAREFUL using print here for print-debugging will lead to the ouput being captured
     # by capsys.readouterr() and thus messing with the test
     # get stdout
