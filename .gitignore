@@ -38,6 +38,7 @@
 *.swp
 **/tmp_*/
 *.log
+!tests/**/*.log
 !.gitignore
 !README.md
 !MANIFEST.in
