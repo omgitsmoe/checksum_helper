@@ -41,7 +41,9 @@ def test_do_incremental(setup_dir_to_checksum):
     checksume_hlpr, include_unchanged, root_dir = setup_dir_to_checksum
     assert os.path.isabs(checksume_hlpr.root_dir)
 
-    checksume_hlpr.do_incremental_checksums("sha512")
+    incremental = checksume_hlpr.do_incremental_checksums("sha512", single_hash=True)
+    assert incremental is not None
+    incremental.write()
 
     if include_unchanged:
         verified_sha_name = "tt_2018-04-22_inc_full.sha512"
@@ -102,7 +104,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
     caplog.set_level(logging.WARNING, logger='Checksum_Helper')
     monkeypatch.setattr('builtins.input', lambda x: "y")
 
-    a = Args(path=root_dir, hash_filename_filter=hash_fn_filter,
+    a = Args(path=root_dir, hash_filename_filter=hash_fn_filter, single_hash=True,
              include_unchanged=include_unchanged, discover_hash_files_depth=depth,
              hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist)
     _cl_incremental(a)
@@ -134,7 +136,7 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
     shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "per_dir"),
                     os.path.join(root_dir, ""))
 
-    a = Args(path=root_dir, hash_filename_filter=None,
+    a = Args(path=root_dir, hash_filename_filter=None, single_hash=True,
              include_unchanged=True, discover_hash_files_depth=-1,
              hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist)
     _cl_incremental(a)

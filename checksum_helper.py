@@ -437,8 +437,9 @@ class ChecksumHelper:
         self.hash_file_most_current = most_current
 
     def do_incremental_checksums(
-            self, algo_name, start_path=None, root_only=False,
-            whitelist=None, blacklist=None) -> None:
+            self, algo_name, single_hash: bool = False, start_path: Optional[str] = None,
+            root_only: bool = False, whitelist: Optional[List[str]] = None,
+            blacklist: Optional[List[str]] = None) -> Optional['ChecksumHelperData']:
         """
         Creates checksums for all changed files (that dont match checksums in
         hash_file_most_current)
@@ -456,12 +457,14 @@ class ChecksumHelper:
             start_path = self.root_dir
         elif start_path and not start_path.startswith(self.root_dir + os.sep):
             logger.error("start_path has to be a subpath of the current ChecksumHelper's root dir")
-            return
+            return None
 
         dir_name = os.path.basename(start_path)
-        incremental = ChecksumHelperData(
-                self, os.path.join(start_path, f"{dir_name}_"
-                                               f"{time.strftime('%Y-%m-%d')}.{algo_name}"))
+        if single_hash:
+            filename = os.path.join(start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.{algo_name}")
+        else:
+            filename = os.path.join(start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.cshd")
+        incremental = ChecksumHelperData(self, filename)
 
         skip_unchanged = self.options['incremental_skip_unchanged']
         collect_fstat = self.options['incremental_collect_fstat']
@@ -497,8 +500,7 @@ class ChecksumHelper:
             if root_only:
                 break
 
-        if incremental.entries:
-            incremental.write()
+        return incremental
 
     def _build_verfiy_hash(
             self, file_path: str, algo_name: str,
@@ -1000,14 +1002,22 @@ class ChecksumHelperData:
         return write_file
 
     def write(self, force: bool = False) -> bool:
-        _, ext = os.path.splitext(self.filename)
+        if not self.entries:
+            logger.info("There are no hashed file entries to write!")
+            return False
+
+        fn, ext = os.path.splitext(self.filename)
         if ext == ".cshd":
-            return self._write(force)
-        elif not ext:
-            self.filename += ".cshd"
-            return self._write(force)
+            written = self._write(force)
+        elif not ext or not self.single_hash:
+            self.filename = f"{fn}.cshd"
+            written = self._write(force)
         else:
-            return self._write_as_single_hash_file(force)
+            written = self._write_as_single_hash_file(force)
+
+        if written:
+            logger.info("Wrote %s", self.get_path())
+        return written
 
     def _write(self, force=False) -> bool:
         write_file = self._check_write_file(force)
@@ -1144,7 +1154,6 @@ class ChecksumHelperData:
                         if os.path.isfile(fname)}
 
     def verify(self, whitelist: Optional[Sequence[str]]=None) -> Tuple[List[str], List[str], int]:
-        # @Duplicate almost duplicate of HashFile.verify
         crc_errors: List[str] = []
         missing: List[str] = []
         matches = 0
@@ -1296,11 +1305,14 @@ def _cl_incremental(args: argparse.Namespace):
     c.options["include_unchanged_files_incremental"] = True if args.include_unchanged else False
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     if args.per_directory:
-        c.do_incremental_checksums(
+        incremental = c.do_incremental_checksums(
             args.hash_algorithm,
+            single_hash=args.single_hash,
             root_only=True,
             whitelist=args.whitelist,
             blacklist=args.blacklist)
+        if incremental is not None:
+            incremental.write()
 
         for dp in os.listdir(args.path):
             if not os.path.isdir(os.path.join(args.path, dp)):
@@ -1310,14 +1322,21 @@ def _cl_incremental(args: argparse.Namespace):
             if not include_path(dirpath, args.whitelist, args.blacklist):
                 continue
 
-            c.do_incremental_checksums(
+            incremental = c.do_incremental_checksums(
                 args.hash_algorithm,
+                single_hash=args.single_hash,
                 start_path=os.path.abspath(os.path.join(args.path, dp)),
                 whitelist=args.whitelist,
                 blacklist=args.blacklist)
+            if incremental is not None:
+                incremental.write()
     else:
-        c.do_incremental_checksums(args.hash_algorithm, whitelist=args.whitelist,
-                                   blacklist=args.blacklist)
+        incremental = c.do_incremental_checksums(args.hash_algorithm, single_hash=args.single_hash,
+                                                 whitelist=args.whitelist, blacklist=args.blacklist)
+        if incremental is not None:
+            if args.out_filename:
+                incremental.relocate(args.out_filename)
+            incremental.write()
 
 
 def _cl_build_most_current(args: argparse.Namespace) -> None:
@@ -1486,6 +1505,15 @@ if __name__ == "__main__":
     incremental.add_argument("hash_algorithm", type=str)
     incremental.add_argument("-iu", "--include-unchanged", action="store_true",
                              help="Include the checksum of unchanged files in the output")
+    incremental.add_argument("-s", "--single-hash", action="store_true",
+                             help="Force files to be written as single hash (*.sha512, *.md5, etc.) files. "
+                                  "Does not support storing mtimes (default format is .cshd)!")
+    incremental.add_argument("-o", "--out-filename", type=str,
+                             help="Default filename is the the name of the parent dir with "
+                                  "the date appended, by default a .cshd file is created. "
+                                  "Specify a filename having a hash type "
+                                  "(see hashlib.algorithms_available) as extension to have all "
+                                  "other hashes be re-hashed to this one!")
     # only either white or blacklist can be used at the same time - not both
     inc_wl_or_bl = incremental.add_mutually_exclusive_group()
     inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
