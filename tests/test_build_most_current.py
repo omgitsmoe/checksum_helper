@@ -33,7 +33,7 @@ def test_build_most_current_single(hash_fn_filter, search_depth, dont_filter_del
 
     verified_sha_contents = read_file(os.path.join(TESTS_DIR, "test_build_most_current_files",
                                                    verified_sha_name))
-    generated_sha_name = f"{root_dir}\\most_current.sha512"
+    generated_sha_name = f"{root_dir}{os.sep}most_current.sha512"
     generated_sha_contents = read_file(generated_sha_name)
 
     assert(verified_sha_contents == generated_sha_contents)
@@ -59,7 +59,7 @@ def test_build_most_current_cshd(hash_fn_filter, search_depth, dont_filter_delet
 
     verified_cshd_contents = read_file(os.path.join(TESTS_DIR, "test_build_most_current_files",
                                                    verified_cshd_name))
-    generated_cshd_name = f"{root_dir}\\most_current.cshd"
+    generated_cshd_name = f"{root_dir}{os.sep}most_current.cshd"
     generated_cshd_contents = read_file(generated_cshd_name)
 
     print("VERIFIED:", verified_cshd_contents.strip())

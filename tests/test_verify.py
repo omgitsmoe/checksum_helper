@@ -273,7 +273,7 @@ def test_verify_filter(caplog):
     root_dir = test_verify_root
     a = Args(root_dir=root_dir, discover_hash_files_depth=1, hash_filename_filter=(),
              filter=[
-                 f"sub1{os.altsep}*",
+                 f"sub1{os.sep}*",
                  "new ?.txt",
                     ])
 
@@ -302,7 +302,7 @@ def test_verify_filter(caplog):
     a = Args(root_dir=root_dir, discover_hash_files_depth=-1, hash_filename_filter=(),
              filter=[
                  "*file?.txt",
-                 f"s*{os.altsep}sub1{os.altsep}**",
+                 f"s*{os.sep}sub1{os.sep}**",
                     ])
 
     caplog.clear()
@@ -332,7 +332,7 @@ def test_verify_filter(caplog):
     a = Args(root_dir=root_dir, discover_hash_files_depth=-1, hash_filename_filter=("*.md5",),
              filter=[
                  "",
-                 f"sub?{os.altsep}*",
+                 f"sub?{os.sep}*",
                     ])
 
     caplog.clear()
