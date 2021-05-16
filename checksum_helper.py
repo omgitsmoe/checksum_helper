@@ -1072,7 +1072,10 @@ class ChecksumHelperData:
                 f"{hashed_file.hash_type},"
                 f"{hashed_file.hex_hash()} {rel_file_path}")
 
-        with open(self.get_path(), "w", encoding="UTF-8") as w:
+        # we want universal newlines mode disabled here (translates \n to
+        # platform default; it's fine for reading since everything ends
+        # up as \n)
+        with open(self.get_path(), "w", encoding="UTF-8", newline='') as w:
             w.write("\n".join(lines))
             w.write("\n")
 
@@ -1099,8 +1102,11 @@ class ChecksumHelperData:
             lines.append(
                 f"{hashed_file.hex_hash()} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
 
+        # we want universal newlines mode disabled here (translates \n to
+        # platform default; it's fine for reading since everything ends
+        # up as \n)
         # older version of TotalCommander need UTF-8 BOM for checksum files so use UTF-8-SIG
-        with open(self.get_path(), "w", encoding="UTF-8-SIG") as w:
+        with open(self.get_path(), "w", encoding="UTF-8-SIG", newline='') as w:
             w.write("\n".join(lines))
             w.write("\n")
 
