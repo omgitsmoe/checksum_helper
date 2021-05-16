@@ -61,6 +61,7 @@ HASH_FILES = ("tt.md5", "tt.sha256", "tt.sha512", os.path.join("sub3", "sub1", "
     # try to move to diff drive
     (os.path.join("sub4", "file1.txt"),
      # choose drive dynamically so we're not running the tests on the same drive by chance
+     # Windows only!
      os.path.join([d for d in "abcdefghijklmnopqrstuvwxyz" if d != TESTS_DIR[0].lower()][0] + ":", os.sep, "sub2", "sub1"),
      -1, None, ".",
      (os.path.join("sub4", "file1.txt"),), (),
@@ -118,6 +119,10 @@ HASH_FILES = ("tt.md5", "tt.sha256", "tt.sha512", os.path.join("sub3", "sub1", "
 def test_move_files(src, dst, depth, hash_fn_filter, expected_files_dirname, moved_paths, extra_cmp,
                     setup_dir_to_checksum, caplog, monkeypatch):
     root_dir = setup_dir_to_checksum
+
+    # abspath test windows only
+    if os.name != 'nt' and os.path.isabs(dst):
+        return
 
     caplog.set_level(logging.WARNING)
     # clear logging records

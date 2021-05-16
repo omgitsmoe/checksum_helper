@@ -8,7 +8,7 @@ import copy
 
 from typing import cast
 
-from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args
+from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args, compare_lines_sorted
 from checksum_helper import ChecksumHelper, _cl_incremental, descend_into, HashedFile, ChecksumHelperData, LOG_LVL_VERBOSE, LOG_LVL_EXTRAVERBOSE
 
 
@@ -57,7 +57,7 @@ def test_do_incremental(setup_dir_to_checksum):
     generated_sha_name = f"tt_{time.strftime('%Y-%m-%d')}.sha512"
     generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
 
-    assert(verified_sha_contents == generated_sha_contents)
+    compare_lines_sorted(verified_sha_contents, generated_sha_contents)
 
 
 @pytest.mark.parametrize("options, verified_cshd_name",
@@ -120,7 +120,7 @@ def test_do_incremental_cshd(options, verified_cshd_name, setup_tmpdir_param):
     generated_cshd_name = f"tt_{time.strftime('%Y-%m-%d')}.cshd"
     generated_cshd_contents = read_file(os.path.join(root_dir, generated_cshd_name))
 
-    assert(verified_cshd_contents == generated_cshd_contents)
+    compare_lines_sorted(verified_cshd_contents, generated_cshd_contents)
 
 
 @pytest.mark.parametrize(
@@ -184,7 +184,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
         generated_sha_name = f"wl_bl_{time.strftime('%Y-%m-%d')}.sha512"
         generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
 
-        assert(verified_sha_contents == generated_sha_contents)
+        compare_lines_sorted(verified_sha_contents, generated_sha_contents)
 
 
 @pytest.mark.parametrize(
@@ -225,7 +225,7 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
 
         generated_sha_contents = read_file(os.path.join(root_dir, result_fn))
 
-        assert(verified_sha_contents == generated_sha_contents)
+        compare_lines_sorted(verified_sha_contents, generated_sha_contents)
 
 
 @pytest.mark.parametrize(

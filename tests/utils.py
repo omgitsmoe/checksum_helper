@@ -4,6 +4,8 @@ import shutil
 import json
 import pickle
 
+from typing import List
+
 
 TESTS_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -110,3 +112,9 @@ class Args:
 def sort_hf_contents(cont):
     return sorted([ln.split(" *", 1) for ln in cont.splitlines()],
                   key=lambda x: x[1])
+
+
+def compare_lines_sorted(a: str, b: str) -> None:
+    # strip BOM \ufeff
+    assert sorted(ln for ln in a.strip('\ufeff').splitlines()) == sorted(
+            ln for ln in b.strip('\ufeff').splitlines())
