@@ -1327,8 +1327,11 @@ def _cl_check_missing(args: argparse.Namespace) -> None:
 def _cl_incremental(args: argparse.Namespace):
     c = ChecksumHelper(args.path,
                        hash_filename_filter=args.hash_filename_filter)
-    c.options["include_unchanged_files_incremental"] = True if args.include_unchanged else False
+    c.options["include_unchanged_files_incremental"] = not args.dont_include_unchanged
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
+    c.options['incremental_skip_unchanged'] = args.skip_unchanged
+    c.options['incremental_collect_fstat'] = not args.dont_collect_mtime
+
     if args.per_directory:
         incremental = c.do_incremental_checksums(
             args.hash_algorithm,
@@ -1529,11 +1532,20 @@ if __name__ == "__main__":
                                         formatter_class=SmartFormatter)
     incremental.add_argument("path", type=str)
     incremental.add_argument("hash_algorithm", type=str)
-    incremental.add_argument("-iu", "--include-unchanged", action="store_true",
-                             help="Include the checksum of unchanged files in the output")
+    incremental.add_argument("--dont-include-unchanged", action="store_true",
+                             help="Don't include the checksum of unchanged files in the output")
     incremental.add_argument("-s", "--single-hash", action="store_true",
                              help="Force files to be written as single hash (*.sha512, *.md5, etc.) files. "
                                   "Does not support storing mtimes (default format is .cshd)!")
+    incremental.add_argument("--skip-unchanged", action="store_true",
+                             help="Skip generating and comparing hashes for files that have the same "
+                                  "modification time as the file on record! (There are ways that a "
+                                  "file can change without the mtime changing and like this "
+                                  "the source is not checked for corruption!)")
+    incremental.add_argument("--dont-collect-mtime", action="store_true",
+                             help="Don't collect the modification time of files that would be used "
+                                  "for the --skip-unchanged flag and for emitting warnings "
+                                  "if a file should not have changed when doing an incremental checksum")
     incremental.add_argument("-o", "--out-filename", type=str,
                              help="Default filename is the the name of the parent dir with "
                                   "the date appended, by default a .cshd file is created. "

@@ -168,8 +168,9 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
     monkeypatch.setattr('builtins.input', lambda x: "y")
 
     a = Args(path=root_dir, hash_filename_filter=hash_fn_filter, single_hash=True,
-             include_unchanged=include_unchanged, discover_hash_files_depth=depth,
-             hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist)
+             dont_include_unchanged=not include_unchanged, discover_hash_files_depth=depth,
+             hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist,
+             skip_unchanged=False, dont_collect_mtime=False)
     _cl_incremental(a)
     if whitelist is not None and blacklist is not None:
         assert caplog.record_tuples == [
@@ -200,8 +201,9 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
                     os.path.join(root_dir, ""))
 
     a = Args(path=root_dir, hash_filename_filter=None, single_hash=True,
-             include_unchanged=True, discover_hash_files_depth=-1,
-             hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist)
+             dont_include_unchanged=False, discover_hash_files_depth=-1,
+             hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist,
+             skip_unchanged=False, dont_collect_mtime=False)
     _cl_incremental(a)
 
     expected_res = [
