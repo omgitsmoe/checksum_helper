@@ -8,61 +8,6 @@ from utils import TESTS_DIR, setup_tmpdir_param, Args
 from checksum_helper import split_path, move_fpath, HashedFile, gen_hash_from_file, ChecksumHelper, _cl_copy, discover_hash_files, ChecksumHelperData
 
 
-@pytest.mark.parametrize(
-        "test_input, expected",
-        [
-            ("./test/test2/test3.txt", ([".", "test", "test2"], "test3.txt")),
-            ("test/test2/test3.txt", (["test", "test2"], "test3.txt")),
-            ("./test/test2/", ([".", "test", "test2"], None)),
-            ("./test/test2/test3", ([".", "test", "test2"], "test3")),
-            ("C:/test/test2/test3.txt", (["C:", "test", "test2"], "test3.txt")),
-            ("C:\\test\\test2\\test3.txt", (["C:", "test", "test2"], "test3.txt")),
-            (".\\test\\test2\\test3.txt", ([".", "test", "test2"], "test3.txt")),
-            (".\\test\\..\\test3.txt", ([".", "test", ".."], "test3.txt")),
-            (".\\test\\..\\\\test3.txt", (None, None)),
-            ("\\test\\test3.txt", (None, None)),
-            ("\\\\test\\test3.txt", (None, None)),
-            ("/test\\test3.txt", (None, None)),
-        ])
-def test_split_path(test_input, expected):
-    assert split_path(test_input) == expected
-
-
-@pytest.mark.parametrize(
-        "test_input, expected",
-        [
-            (("C:\\test\\test2\\test3.txt", "D:\\test4\\test5.txt"),
-             "D:\\test4\\test5.txt"),
-            (("C:\\test\\test2\\test3.txt", "D:\\test4\\test5"),
-             "D:\\test4\\test5"),
-            (("C:\\test\\test2\\test3.txt", "D:\\test4\\"),
-             "D:\\test4\\test3.txt"),
-            (("C:\\test\\test2\\test3.txt", ".\\test4\\test5.txt"),
-             "C:\\test\\test2\\test4\\test5.txt"),
-            (("C:\\test\\test2\\test3.txt", ".\\..\\test4\\"),
-             "C:\\test\\test4\\test3.txt"),
-            # trying to go beyond root of drive
-            (("C:\\test\\test2\\test3.txt", "..\\..\\..\\"),
-             None),
-            (("C:\\test\\test2\\test3.txt", ".\\test4\\test5.txt"),
-             "C:\\test\\test2\\test4\\test5.txt"),
-            # unix path
-            (("/test\\test2\\test3.txt", ".\\test4\\test5.txt"),
-             None),
-            # worng format of src
-            (("\\test\\test2\\test3.txt", ".\\test4\\test5.txt"),
-             None),
-            # unc path
-            (("\\\\test\\test2\\test3.txt", ".\\test4\\test5.txt"),
-             None),
-            # wrong format of mv_path
-            (("test\\test2\\test3.txt", ".\\test4\\\\test5.txt"),
-             None),
-        ])
-def test_move_fpath(test_input, expected):
-    assert move_fpath(*test_input) == expected
-
-
 def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
     tmpdir = setup_tmpdir_param
     root_dir = os.path.join(tmpdir, "tt")
@@ -102,25 +47,6 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved3.sha512"))
 
-    caplog.set_level(logging.INFO)
-    # clear logging records
-    caplog.clear()
-    # fault mv_path
-    a = Args(source_path=os.path.join(root_dir, "sub1", "tt_moved3.sha512"),
-             dest_path=f"..{os.sep}{os.sep}tt_moved4.sha512")
-    hf = _cl_copy(a)
-    # no file written
-    assert not os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved4.sha512"))
-    assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!" % hf.get_path()),
-        ('Checksum_Helper', logging.WARNING, f'Error: Two following separators in path: ..{os.sep}{os.sep}tt_moved4.sha512'),
-        ('Checksum_Helper', logging.WARNING, f"Move path '..{os.sep}{os.sep}tt_moved4.sha512' was in the wrong format!"),
-        ('Checksum_Helper', logging.ERROR, r"Couldn't move file due to a faulty move path!"),
-        ('Checksum_Helper', logging.WARNING, r"Hash file was NOT copied!"),
-
-    ]
 
 def test_warn_abspath(setup_tmpdir_param, monkeypatch, caplog):
     tmpdir = setup_tmpdir_param

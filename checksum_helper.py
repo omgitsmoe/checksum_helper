@@ -341,11 +341,42 @@ def include_path(path: str, whitelist: Optional[List[str]]=None,
     return include
 
 
+def move_info(source_path: str, mv_path: str,
+              root_dir: Optional[str] = None) -> Tuple[str, bool, str, bool, bool, str]:
+    """Computes variables that are regularly need when doing copy/move operations
+    root_dir parameter is used (like cwd in abspath) to make a relative path absolute
+    (but with the option to specify a custom dir that differs from the cwd);
+    default for root_dir is the cwd
+    """
+    if root_dir is None:
+        root_dir = os.getcwd()
+    # abspath basically just does join(os.getcwd(), path) if path isabs is False
+    source_path = (source_path if os.path.isabs(source_path)
+                   else os.path.join(root_dir, source_path))
+    source_path = os.path.normpath(source_path)
+    src_is_dir = os.path.isdir(source_path)
+    # os.path.exists also accepts absolute paths with .. and . in them
+    # >>> os.path.exists(r"N:\_archive\test\..\.\..\_archive")
+    # True
+    # can use normpath and a join to essentially do the same as move_fpath since it
+    # removes redundant separators and up-level refs:
+    # only works like that on dirs, on files we have to remove filename and then
+    # join and test if mv path ends in a filenam?
+    # >>> os.path.normpath(os.path.join(r"N:\_archive\test", r"..\.\..\_archive"))
+    # 'N:\\_archive'
+    # may change the meaning of a path that contains symbolic links
+    dest_path = mv_path if os.path.isabs(mv_path) else os.path.join(root_dir, mv_path)
+    dest_path = os.path.normpath(dest_path)
+    dest_exists = os.path.exists(dest_path)
+    dest_is_dir = False if not dest_exists else os.path.isdir(dest_path)
+    real_dest = os.path.join(dest_path, os.path.basename(source_path)) if dest_is_dir else dest_path
+
+    return source_path, src_is_dir, dest_path, dest_exists, dest_is_dir, real_dest
+
 CHOptions = TypedDict('CHOptions', {'include_unchanged_files_incremental': bool,
                                     'discover_hash_files_depth': int,
                                     'incremental_skip_unchanged': bool,
                                     'incremental_collect_fstat': bool})
-
 
 class ChecksumHelper:
 
@@ -699,26 +730,9 @@ class ChecksumHelper:
             cshd.read()
             all_hash_files.append(cshd)
 
-        # abspath basically just does join(os.getcwd(), path) if path isabs is False
-        source_path = (source_path if os.path.isabs(source_path)
-                       else os.path.join(self.root_dir, source_path))
-        source_path = os.path.normpath(source_path)
-        src_is_dir = os.path.isdir(source_path)
-        # os.path.exists also accepts absolute paths with .. and . in them
-        # >>> os.path.exists(r"N:\_archive\test\..\.\..\_archive")
-        # True
-        # can use normpath and a join to essentially do the same as move_fpath since it
-        # removes redundant separators and up-level refs:
-        # only works like that on dirs, on files we have to remove filename and then
-        # join and test if mv path ends in a filenam?
-        # >>> os.path.normpath(os.path.join(r"N:\_archive\test", r"..\.\..\_archive"))
-        # 'N:\\_archive'
-        # may change the meaning of a path that contains symbolic links
-        dest_path = mv_path if os.path.isabs(mv_path) else os.path.join(self.root_dir, mv_path)
-        dest_path = os.path.normpath(dest_path)
-        dest_exists = os.path.exists(dest_path)
-        dest_is_dir = False if not dest_exists else os.path.isdir(dest_path)
-        real_dest = os.path.join(dest_path, os.path.basename(source_path)) if dest_is_dir else dest_path
+        (source_path, src_is_dir, dest_path, dest_exists,
+            dest_is_dir, real_dest) = move_info(source_path, mv_path, root_dir=self.root_dir)
+
         real_dest_exists = os.path.exists(real_dest)
         # only checking for file conflict since for some systems overwriting might be the default
         if not src_is_dir and real_dest_exists:
@@ -1133,13 +1147,11 @@ class ChecksumHelperData:
             logger.error("Can't move hash file to a different drive than the files it contains "
                          "hashes for!")
             return None, None
-        # need to check that we dont get None from move_fpath
-        new_moved_path = move_fpath(self.get_path(), mv_path)
-        if new_moved_path is None:
-            logger.error("Couldn't move file due to a faulty move path!")
-            return None, None
-        new_hash_file_dir, new_filename = os.path.split(new_moved_path)
 
+        (source_path, src_is_dir, dest_path, dest_exists,
+            dest_is_dir, real_dest) = move_info(self.get_path(), mv_path, root_dir=self.root_dir)
+
+        new_hash_file_dir, new_filename = os.path.split(real_dest)
         _, ext = os.path.splitext(new_filename)
         if not ext or ext == ".cshd":
             self.single_hash = False
