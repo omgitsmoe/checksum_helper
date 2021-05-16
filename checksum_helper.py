@@ -906,6 +906,8 @@ class ChecksumHelperData:
 
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
+            # also needed since we always use '/' as path sep when writing the file
+            # but use os.sep while running (since unix can't deal with '\' as path sep)
             abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
             self.entries[abs_normed_path] = HashedFile(
                     abs_normed_path, mtime, hash_type, binascii.a2b_hex(hash_str), False)
@@ -987,6 +989,8 @@ class ChecksumHelperData:
 
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
+            # also needed since we always use '/' as path sep when writing the file
+            # but use os.sep while running (since unix can't deal with '\' as path sep)
             abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
             self.entries[abs_normed_path] = HashedFile(
                     abs_normed_path, None, cast(str, hash_type), binascii.a2b_hex(hash_str), text_mode)
@@ -1037,6 +1041,10 @@ class ChecksumHelperData:
         lines = []
         for file_path, hashed_file in self.entries.items():
             rel_file_path = os.path.relpath(file_path, start=root_dir)
+            # NOTE: always use '/' as path sep when writing the file
+            # but use os.sep while running (since unix can't deal with '\' as path sep)
+            if os.sep == '\\':
+                rel_file_path = rel_file_path.replace(os.sep, '/')
             lines.append(
                 f"{hashed_file.mtime if hashed_file.mtime is not None else ''},"
                 f"{hashed_file.hash_type},"
@@ -1061,6 +1069,10 @@ class ChecksumHelperData:
         for file_path, hashed_file in self.entries.items():
             # convert absolute paths to paths that are relative to the hash file location
             rel_file_path = os.path.relpath(file_path, start=root_dir)
+            # NOTE: always use '/' as path sep when writing the file
+            # but use os.sep while running (since unix can't deal with '\' as path sep)
+            if os.sep == '\\':
+                rel_file_path = rel_file_path.replace(os.sep, '/')
 
             lines.append(
                 f"{hashed_file.hex_hash()} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
