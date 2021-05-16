@@ -1227,7 +1227,6 @@ class HashedFile:
     def meta_eql(self, o) -> bool:
         for field in fields(HashedFile):
             if getattr(self, field.name) != getattr(o, field.name):
-                print("FIELD", field.name, "NOT MATCHING")
                 return False
         return True
 
