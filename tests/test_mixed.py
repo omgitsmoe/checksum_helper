@@ -81,8 +81,8 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
 
     with open(os.path.join(root_dir, "sub2", "tt_moved.sha512"), 'r', encoding='utf-8-sig') as f:
         moved = f.read()
-    expected = orig.replace("*n", f"*..{os.sep}n").replace(
-            f"*sub2{os.sep}", "*").replace("*sub1", f"*..{os.sep}sub1")
+    expected = orig.replace("*n", f"*../n").replace(
+            f"*sub2/", "*").replace("*sub1", f"*../sub1")
     assert expected == moved
 
     a = Args(source_path=os.path.join(root_dir, "sub2", "tt_moved.sha512"),
@@ -92,8 +92,8 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
 
     with open(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"), 'r', encoding='utf-8-sig') as f:
         moved = f.read()
-    expected = orig.replace("*n", f"*..{os.sep}..{os.sep}n").replace(f"*sub2{os.sep}", f"*..{os.sep}..{os.sep}sub2{os.sep}").replace(
-            f"*sub1{os.sep}sub2{os.sep}", "*").replace(f"*sub1{os.sep}", f"*..{os.sep}")
+    expected = orig.replace("*n", f"*../../n").replace(f"*sub2/", f"*../../sub2/").replace(
+            f"*sub1/sub2/", "*").replace(f"*sub1/", f"*../")
     assert expected == moved
 
     a = Args(source_path=os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"),

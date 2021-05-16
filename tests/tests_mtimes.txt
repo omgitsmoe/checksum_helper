@@ -1,140 +1,140 @@
-1621036613.8227386 test_build_most_current_files\pre-existing.cshd
-1524334794.4067194 test_build_most_current_files\normalized\new 2.txt
-1567977534.4568863 test_build_most_current_files\normalized\new 3.txt
-1524334840.3075361 test_build_most_current_files\normalized\new 4.txt
-1568117776.6580207 test_build_most_current_files\normalized\test.log
-1568382303.043322 test_build_most_current_files\normalized\tt.md5
-1568376415.4808714 test_build_most_current_files\normalized\tt.sha256
-1568376362.1869895 test_build_most_current_files\normalized\tt.sha512
-1568117855.2035787 test_build_most_current_files\normalized\sub1\desktop.ini
-1524334688.5989518 test_build_most_current_files\normalized\sub1\new 2.txt
-1524334859.3268101 test_build_most_current_files\normalized\sub1\new 3.txt
-1524334707.4520152 test_build_most_current_files\normalized\sub1\new 4.txt
-1568117965.1309328 test_build_most_current_files\normalized\sub1\sub2\afsdg.jpg
-1524334852.8311138 test_build_most_current_files\normalized\sub1\sub2\new 2.txt
-1524334698.6291595 test_build_most_current_files\normalized\sub1\sub2\new 3.txt
-1567977547.1245396 test_build_most_current_files\normalized\sub1\sub2\new 4.txt
-1568117970.101687 test_build_most_current_files\normalized\sub2\dsfgdfhfg.jpg
-1568387413.2405524 test_build_most_current_files\normalized\sub2\tt.md5
-1544477284.3567212 test_build_most_current_files\normalized\sub2\sub1\file1.txt
-1544477334.1710248 test_build_most_current_files\normalized\sub3\file1.txt
-1567977573.2507634 test_build_most_current_files\normalized\sub3\sub1\file1.txt
-1568377035.1428516 test_build_most_current_files\normalized\sub3\sub1\tt_sub3_sub1.sha512
-1544478275.315372 test_build_most_current_files\normalized\sub3\sub2\file1.txt
-1568117974.098704 test_build_most_current_files\normalized\sub3\sub2\sdgfdfhfgh.jpg
-1568117788.7103107 test_build_most_current_files\normalized\sub3\sub2\test2.log
-1544477416.3576708 test_build_most_current_files\normalized\sub4\file1.txt
-1544477425.6305835 test_build_most_current_files\normalized\sub4\sub1\file1.txt
-1568117771.020337 test_build_most_current_files\normalized\sub4\sub1\Thumbs.db
-1568387459.475892 test_build_most_current_files\normalized\sub4\sub1\subX\tt.sha256
-1524334794.4067194 test_build_most_current_files\tt\new 2.txt
-1524335143.2291894 test_build_most_current_files\tt\new 3.md5
-1524334698.6291595 test_build_most_current_files\tt\new 3.txt
-1524334840.3075361 test_build_most_current_files\tt\new 4.txt
-1524334782.3161285 test_build_most_current_files\tt\tt.sha512
-1524334812.4534945 test_build_most_current_files\tt\tt2.sha512
-1524334688.5989518 test_build_most_current_files\tt\sub1\new 2.txt
-1524334859.3268101 test_build_most_current_files\tt\sub1\new 3.txt
-1524335174.9675534 test_build_most_current_files\tt\sub1\new 4 - Kopie.sha512
-1524334707.4520152 test_build_most_current_files\tt\sub1\new 4.txt
-1524334852.8311138 test_build_most_current_files\tt\sub1\sub2\new 2.txt
-1524334698.6291595 test_build_most_current_files\tt\sub1\sub2\new 3.txt
-1524334802.3300772 test_build_most_current_files\tt\sub1\sub2\new 4.txt
-1524334794.4067194 test_incremental_files\per_dir\new 2.txt
-1567977534.4568863 test_incremental_files\per_dir\new 3.txt
-1524334840.3075361 test_incremental_files\per_dir\new 4.txt
-1568117776.6580207 test_incremental_files\per_dir\test.log
-1568117855.2035787 test_incremental_files\per_dir\sub1\desktop.ini
-1524334688.5989518 test_incremental_files\per_dir\sub1\new 2.txt
-1524334859.3268101 test_incremental_files\per_dir\sub1\new 3.txt
-1524334707.4520152 test_incremental_files\per_dir\sub1\new 4.txt
-1568117965.1309328 test_incremental_files\per_dir\sub1\sub2\afsdg.jpg
-1524334852.8311138 test_incremental_files\per_dir\sub1\sub2\new 2.txt
-1524334698.6291595 test_incremental_files\per_dir\sub1\sub2\new 3.txt
-1567977547.1245396 test_incremental_files\per_dir\sub1\sub2\new 4.txt
-1568117970.101687 test_incremental_files\per_dir\sub2\dsfgdfhfg.jpg
-1544477284.3567212 test_incremental_files\per_dir\sub2\sub1\file1.txt
-1544477334.1710248 test_incremental_files\per_dir\sub3\file1.txt
-1567977573.2507634 test_incremental_files\per_dir\sub3\sub1\file1.txt
-1544478275.315372 test_incremental_files\per_dir\sub3\sub2\file1.txt
-1568118496.9756615 test_incremental_files\per_dir\sub3\sub2\pre.sha512
-1568117974.098704 test_incremental_files\per_dir\sub3\sub2\sdgfdfhfgh.jpg
-1568117788.7103107 test_incremental_files\per_dir\sub3\sub2\test2.log
-1544477416.3576708 test_incremental_files\per_dir\sub4\file1.txt
-1544477425.6305835 test_incremental_files\per_dir\sub4\sub1\file1.txt
-1568117771.020337 test_incremental_files\per_dir\sub4\sub1\Thumbs.db
-1524334794.4067194 test_incremental_files\tt\new 2.txt
-1524335143.2291894 test_incremental_files\tt\new 3.md5
-1524334698.6291595 test_incremental_files\tt\new 3.txt
-1524334840.3075361 test_incremental_files\tt\new 4.txt
-1524334782.3161285 test_incremental_files\tt\tt.sha512
-1524334812.4534945 test_incremental_files\tt\tt2.sha512
-1524334688.5989518 test_incremental_files\tt\sub1\new 2.txt
-1524334859.3268101 test_incremental_files\tt\sub1\new 3.txt
-1524335174.9675534 test_incremental_files\tt\sub1\new 4 - Kopie.sha512
-1524334707.4520152 test_incremental_files\tt\sub1\new 4.txt
-1524334852.8311138 test_incremental_files\tt\sub1\sub2\new 2.txt
-1524334698.6291595 test_incremental_files\tt\sub1\sub2\new 3.txt
-1524334802.3300772 test_incremental_files\tt\sub1\sub2\new 4.txt
-1524334794.4067194 test_incremental_files\with_cshd\new 2.txt
-1524335143.2291894 test_incremental_files\with_cshd\new 3.md5
-1524334698.6291595 test_incremental_files\with_cshd\new 3.txt
-1524334840.3075361 test_incremental_files\with_cshd\new 4.txt
-1524334782.3161285 test_incremental_files\with_cshd\tt.sha512
-1621127498.3671162 test_incremental_files\with_cshd\with_cshd.cshd
-1524334688.5989518 test_incremental_files\with_cshd\sub1\new 2.txt
-1524334859.3268101 test_incremental_files\with_cshd\sub1\new 3.txt
-1524335174.9675534 test_incremental_files\with_cshd\sub1\new 4 - Kopie.sha512
-1524334707.4520152 test_incremental_files\with_cshd\sub1\new 4.txt
-1524334852.8311138 test_incremental_files\with_cshd\sub1\sub2\new 2.txt
-1524334698.6291595 test_incremental_files\with_cshd\sub1\sub2\new 3.txt
-1524334802.3300772 test_incremental_files\with_cshd\sub1\sub2\new 4.txt
-1621127266.5610268 test_incremental_files\with_cshd\sub1\sub2\newnew.txt
-1524334794.4067194 test_incremental_files\wl_bl\new 2.txt
-1567977534.4568863 test_incremental_files\wl_bl\new 3.txt
-1524334840.3075361 test_incremental_files\wl_bl\new 4.txt
-1568117776.6580207 test_incremental_files\wl_bl\test.log
-1568117855.2035787 test_incremental_files\wl_bl\sub1\desktop.ini
-1524334688.5989518 test_incremental_files\wl_bl\sub1\new 2.txt
-1524334859.3268101 test_incremental_files\wl_bl\sub1\new 3.txt
-1524334707.4520152 test_incremental_files\wl_bl\sub1\new 4.txt
-1568117965.1309328 test_incremental_files\wl_bl\sub1\sub2\afsdg.jpg
-1524334852.8311138 test_incremental_files\wl_bl\sub1\sub2\new 2.txt
-1524334698.6291595 test_incremental_files\wl_bl\sub1\sub2\new 3.txt
-1567977547.1245396 test_incremental_files\wl_bl\sub1\sub2\new 4.txt
-1568117970.101687 test_incremental_files\wl_bl\sub2\dsfgdfhfg.jpg
-1544477284.3567212 test_incremental_files\wl_bl\sub2\sub1\file1.txt
-1544477334.1710248 test_incremental_files\wl_bl\sub3\file1.txt
-1567977573.2507634 test_incremental_files\wl_bl\sub3\sub1\file1.txt
-1544478275.315372 test_incremental_files\wl_bl\sub3\sub2\file1.txt
-1568118496.9756615 test_incremental_files\wl_bl\sub3\sub2\pre.sha512
-1568117974.098704 test_incremental_files\wl_bl\sub3\sub2\sdgfdfhfgh.jpg
-1568117788.7103107 test_incremental_files\wl_bl\sub3\sub2\test2.log
-1544477416.3576708 test_incremental_files\wl_bl\sub4\file1.txt
-1544477425.6305835 test_incremental_files\wl_bl\sub4\sub1\file1.txt
-1568117771.020337 test_incremental_files\wl_bl\sub4\sub1\Thumbs.db
-1567977091.0113957 test_verify_files\tt\new 2.md5
-1524334794.4067194 test_verify_files\tt\new 2.txt
-1567977534.4568863 test_verify_files\tt\new 3.txt
-1524334840.3075361 test_verify_files\tt\new 4.txt
-1621119628.4421682 test_verify_files\tt\new_cshd.txt
-1621120400.1089766 test_verify_files\tt\new_cshd_1+3+missing.cshd
-1567977082.0 test_verify_files\tt\sub1+2_n3+4.sha512
-1524334688.5989518 test_verify_files\tt\sub1\new 2.txt
-1524334859.3268101 test_verify_files\tt\sub1\new 3.txt
-1524334707.4520152 test_verify_files\tt\sub1\new 4.txt
-1621119956.136363 test_verify_files\tt\sub1\new_cshd_3.txt
-1524334852.8311138 test_verify_files\tt\sub1\sub2\new 2.txt
-1524334698.6291595 test_verify_files\tt\sub1\sub2\new 3.txt
-1567977547.1245396 test_verify_files\tt\sub1\sub2\new 4.txt
-1567977680.5183928 test_verify_files\tt\sub1\sub2\sub2.sha512
-1567979500.5355814 test_verify_files\tt\sub1\sub2\sub2_1miss.sha512
-1544477284.3567212 test_verify_files\tt\sub2\sub1\file1.txt
-1544477334.1710248 test_verify_files\tt\sub3\file1.txt
-1621120837.4325638 test_verify_files\tt\sub3\sub2_new_cshd2.cshd
-1567977573.2507634 test_verify_files\tt\sub3\sub1\file1.txt
-1544478275.315372 test_verify_files\tt\sub3\sub2\file1.txt
-1621119623.651858 test_verify_files\tt\sub3\sub2\new_cshd2.txt
-1567977186.144174 test_verify_files\tt\sub3\sub2\sub3_sub2.sha512
-1544477416.3576708 test_verify_files\tt\sub4\file1.txt
-1544477425.6305835 test_verify_files\tt\sub4\sub1\file1.txt
+1621036613.8227386 test_build_most_current_files/pre-existing.cshd
+1524334794.4067194 test_build_most_current_files/normalized/new 2.txt
+1567977534.4568863 test_build_most_current_files/normalized/new 3.txt
+1524334840.3075361 test_build_most_current_files/normalized/new 4.txt
+1568117776.6580207 test_build_most_current_files/normalized/test.log
+1568382303.043322 test_build_most_current_files/normalized/tt.md5
+1568376415.4808714 test_build_most_current_files/normalized/tt.sha256
+1568376362.1869895 test_build_most_current_files/normalized/tt.sha512
+1568117855.2035787 test_build_most_current_files/normalized/sub1/desktop.ini
+1524334688.5989518 test_build_most_current_files/normalized/sub1/new 2.txt
+1524334859.3268101 test_build_most_current_files/normalized/sub1/new 3.txt
+1524334707.4520152 test_build_most_current_files/normalized/sub1/new 4.txt
+1568117965.1309328 test_build_most_current_files/normalized/sub1/sub2/afsdg.jpg
+1524334852.8311138 test_build_most_current_files/normalized/sub1/sub2/new 2.txt
+1524334698.6291595 test_build_most_current_files/normalized/sub1/sub2/new 3.txt
+1567977547.1245396 test_build_most_current_files/normalized/sub1/sub2/new 4.txt
+1568117970.101687 test_build_most_current_files/normalized/sub2/dsfgdfhfg.jpg
+1568387413.2405524 test_build_most_current_files/normalized/sub2/tt.md5
+1544477284.3567212 test_build_most_current_files/normalized/sub2/sub1/file1.txt
+1544477334.1710248 test_build_most_current_files/normalized/sub3/file1.txt
+1567977573.2507634 test_build_most_current_files/normalized/sub3/sub1/file1.txt
+1568377035.1428516 test_build_most_current_files/normalized/sub3/sub1/tt_sub3_sub1.sha512
+1544478275.315372 test_build_most_current_files/normalized/sub3/sub2/file1.txt
+1568117974.098704 test_build_most_current_files/normalized/sub3/sub2/sdgfdfhfgh.jpg
+1568117788.7103107 test_build_most_current_files/normalized/sub3/sub2/test2.log
+1544477416.3576708 test_build_most_current_files/normalized/sub4/file1.txt
+1544477425.6305835 test_build_most_current_files/normalized/sub4/sub1/file1.txt
+1568117771.020337 test_build_most_current_files/normalized/sub4/sub1/Thumbs.db
+1568387459.475892 test_build_most_current_files/normalized/sub4/sub1/subX/tt.sha256
+1524334794.4067194 test_build_most_current_files/tt/new 2.txt
+1524335143.2291894 test_build_most_current_files/tt/new 3.md5
+1524334698.6291595 test_build_most_current_files/tt/new 3.txt
+1524334840.3075361 test_build_most_current_files/tt/new 4.txt
+1524334782.3161285 test_build_most_current_files/tt/tt.sha512
+1524334812.4534945 test_build_most_current_files/tt/tt2.sha512
+1524334688.5989518 test_build_most_current_files/tt/sub1/new 2.txt
+1524334859.3268101 test_build_most_current_files/tt/sub1/new 3.txt
+1524335174.9675534 test_build_most_current_files/tt/sub1/new 4 - Kopie.sha512
+1524334707.4520152 test_build_most_current_files/tt/sub1/new 4.txt
+1524334852.8311138 test_build_most_current_files/tt/sub1/sub2/new 2.txt
+1524334698.6291595 test_build_most_current_files/tt/sub1/sub2/new 3.txt
+1524334802.3300772 test_build_most_current_files/tt/sub1/sub2/new 4.txt
+1524334794.4067194 test_incremental_files/per_dir/new 2.txt
+1567977534.4568863 test_incremental_files/per_dir/new 3.txt
+1524334840.3075361 test_incremental_files/per_dir/new 4.txt
+1568117776.6580207 test_incremental_files/per_dir/test.log
+1568117855.2035787 test_incremental_files/per_dir/sub1/desktop.ini
+1524334688.5989518 test_incremental_files/per_dir/sub1/new 2.txt
+1524334859.3268101 test_incremental_files/per_dir/sub1/new 3.txt
+1524334707.4520152 test_incremental_files/per_dir/sub1/new 4.txt
+1568117965.1309328 test_incremental_files/per_dir/sub1/sub2/afsdg.jpg
+1524334852.8311138 test_incremental_files/per_dir/sub1/sub2/new 2.txt
+1524334698.6291595 test_incremental_files/per_dir/sub1/sub2/new 3.txt
+1567977547.1245396 test_incremental_files/per_dir/sub1/sub2/new 4.txt
+1568117970.101687 test_incremental_files/per_dir/sub2/dsfgdfhfg.jpg
+1544477284.3567212 test_incremental_files/per_dir/sub2/sub1/file1.txt
+1544477334.1710248 test_incremental_files/per_dir/sub3/file1.txt
+1567977573.2507634 test_incremental_files/per_dir/sub3/sub1/file1.txt
+1544478275.315372 test_incremental_files/per_dir/sub3/sub2/file1.txt
+1568118496.9756615 test_incremental_files/per_dir/sub3/sub2/pre.sha512
+1568117974.098704 test_incremental_files/per_dir/sub3/sub2/sdgfdfhfgh.jpg
+1568117788.7103107 test_incremental_files/per_dir/sub3/sub2/test2.log
+1544477416.3576708 test_incremental_files/per_dir/sub4/file1.txt
+1544477425.6305835 test_incremental_files/per_dir/sub4/sub1/file1.txt
+1568117771.020337 test_incremental_files/per_dir/sub4/sub1/Thumbs.db
+1524334794.4067194 test_incremental_files/tt/new 2.txt
+1524335143.2291894 test_incremental_files/tt/new 3.md5
+1524334698.6291595 test_incremental_files/tt/new 3.txt
+1524334840.3075361 test_incremental_files/tt/new 4.txt
+1524334782.3161285 test_incremental_files/tt/tt.sha512
+1524334812.4534945 test_incremental_files/tt/tt2.sha512
+1524334688.5989518 test_incremental_files/tt/sub1/new 2.txt
+1524334859.3268101 test_incremental_files/tt/sub1/new 3.txt
+1524335174.9675534 test_incremental_files/tt/sub1/new 4 - Kopie.sha512
+1524334707.4520152 test_incremental_files/tt/sub1/new 4.txt
+1524334852.8311138 test_incremental_files/tt/sub1/sub2/new 2.txt
+1524334698.6291595 test_incremental_files/tt/sub1/sub2/new 3.txt
+1524334802.3300772 test_incremental_files/tt/sub1/sub2/new 4.txt
+1524334794.4067194 test_incremental_files/with_cshd/new 2.txt
+1524335143.2291894 test_incremental_files/with_cshd/new 3.md5
+1524334698.6291595 test_incremental_files/with_cshd/new 3.txt
+1524334840.3075361 test_incremental_files/with_cshd/new 4.txt
+1524334782.3161285 test_incremental_files/with_cshd/tt.sha512
+1621127498.3671162 test_incremental_files/with_cshd/with_cshd.cshd
+1524334688.5989518 test_incremental_files/with_cshd/sub1/new 2.txt
+1524334859.3268101 test_incremental_files/with_cshd/sub1/new 3.txt
+1524335174.9675534 test_incremental_files/with_cshd/sub1/new 4 - Kopie.sha512
+1524334707.4520152 test_incremental_files/with_cshd/sub1/new 4.txt
+1524334852.8311138 test_incremental_files/with_cshd/sub1/sub2/new 2.txt
+1524334698.6291595 test_incremental_files/with_cshd/sub1/sub2/new 3.txt
+1524334802.3300772 test_incremental_files/with_cshd/sub1/sub2/new 4.txt
+1621127266.5610268 test_incremental_files/with_cshd/sub1/sub2/newnew.txt
+1524334794.4067194 test_incremental_files/wl_bl/new 2.txt
+1567977534.4568863 test_incremental_files/wl_bl/new 3.txt
+1524334840.3075361 test_incremental_files/wl_bl/new 4.txt
+1568117776.6580207 test_incremental_files/wl_bl/test.log
+1568117855.2035787 test_incremental_files/wl_bl/sub1/desktop.ini
+1524334688.5989518 test_incremental_files/wl_bl/sub1/new 2.txt
+1524334859.3268101 test_incremental_files/wl_bl/sub1/new 3.txt
+1524334707.4520152 test_incremental_files/wl_bl/sub1/new 4.txt
+1568117965.1309328 test_incremental_files/wl_bl/sub1/sub2/afsdg.jpg
+1524334852.8311138 test_incremental_files/wl_bl/sub1/sub2/new 2.txt
+1524334698.6291595 test_incremental_files/wl_bl/sub1/sub2/new 3.txt
+1567977547.1245396 test_incremental_files/wl_bl/sub1/sub2/new 4.txt
+1568117970.101687 test_incremental_files/wl_bl/sub2/dsfgdfhfg.jpg
+1544477284.3567212 test_incremental_files/wl_bl/sub2/sub1/file1.txt
+1544477334.1710248 test_incremental_files/wl_bl/sub3/file1.txt
+1567977573.2507634 test_incremental_files/wl_bl/sub3/sub1/file1.txt
+1544478275.315372 test_incremental_files/wl_bl/sub3/sub2/file1.txt
+1568118496.9756615 test_incremental_files/wl_bl/sub3/sub2/pre.sha512
+1568117974.098704 test_incremental_files/wl_bl/sub3/sub2/sdgfdfhfgh.jpg
+1568117788.7103107 test_incremental_files/wl_bl/sub3/sub2/test2.log
+1544477416.3576708 test_incremental_files/wl_bl/sub4/file1.txt
+1544477425.6305835 test_incremental_files/wl_bl/sub4/sub1/file1.txt
+1568117771.020337 test_incremental_files/wl_bl/sub4/sub1/Thumbs.db
+1567977091.0113957 test_verify_files/tt/new 2.md5
+1524334794.4067194 test_verify_files/tt/new 2.txt
+1567977534.4568863 test_verify_files/tt/new 3.txt
+1524334840.3075361 test_verify_files/tt/new 4.txt
+1621119628.4421682 test_verify_files/tt/new_cshd.txt
+1621120400.1089766 test_verify_files/tt/new_cshd_1+3+missing.cshd
+1567977082.0 test_verify_files/tt/sub1+2_n3+4.sha512
+1524334688.5989518 test_verify_files/tt/sub1/new 2.txt
+1524334859.3268101 test_verify_files/tt/sub1/new 3.txt
+1524334707.4520152 test_verify_files/tt/sub1/new 4.txt
+1621119956.136363 test_verify_files/tt/sub1/new_cshd_3.txt
+1524334852.8311138 test_verify_files/tt/sub1/sub2/new 2.txt
+1524334698.6291595 test_verify_files/tt/sub1/sub2/new 3.txt
+1567977547.1245396 test_verify_files/tt/sub1/sub2/new 4.txt
+1567977680.5183928 test_verify_files/tt/sub1/sub2/sub2.sha512
+1567979500.5355814 test_verify_files/tt/sub1/sub2/sub2_1miss.sha512
+1544477284.3567212 test_verify_files/tt/sub2/sub1/file1.txt
+1544477334.1710248 test_verify_files/tt/sub3/file1.txt
+1621120837.4325638 test_verify_files/tt/sub3/sub2_new_cshd2.cshd
+1567977573.2507634 test_verify_files/tt/sub3/sub1/file1.txt
+1544478275.315372 test_verify_files/tt/sub3/sub2/file1.txt
+1621119623.651858 test_verify_files/tt/sub3/sub2/new_cshd2.txt
+1567977186.144174 test_verify_files/tt/sub3/sub2/sub3_sub2.sha512
+1544477416.3576708 test_verify_files/tt/sub4/file1.txt
+1544477425.6305835 test_verify_files/tt/sub4/sub1/file1.txt
