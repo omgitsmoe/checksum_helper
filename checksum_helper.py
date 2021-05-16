@@ -366,9 +366,17 @@ class ChecksumHelper:
             self.hash_filename_filter = ()
         elif isinstance(hash_filename_filter, str):
             # ("md5") is NOT a tuple its a string ("md5",) IS a tuple (mind the comma!)
-            self.hash_filename_filter = (hash_filename_filter.replace(os.altsep, os.sep),)
+            if os.sep == "\\":
+                # so windows users can use both / and \
+                self.hash_filename_filter = (hash_filename_filter.replace(os.altsep, os.sep),)
+            else:
+                # unix doesnt have an os.altsep
+                self.hash_filename_filter = (hash_filename_filter,)
         else:
-            self.hash_filename_filter = tuple(s.replace(os.altsep, os.sep) for s in hash_filename_filter)
+            if os.sep == "\\":
+                self.hash_filename_filter = tuple(s.replace(os.altsep, os.sep) for s in hash_filename_filter)
+            else:
+                self.hash_filename_filter = hash_filename_filter
 
         self.options: CHOptions = {
             "include_unchanged_files_incremental": True,
@@ -1450,9 +1458,10 @@ def _cl_verify_filter(args: argparse.Namespace) -> None:
     c = ChecksumHelper(args.root_dir, hash_filename_filter=args.hash_filename_filter)
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.build_most_current()
-    # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
+    # so windows users can use both /  and \ (unix doesn't have os.altsep)
+    filter_unified = [x.replace(os.altsep, os.sep) for x in args.filter] if os.sep == '\\' else args.filter
     cast(ChecksumHelperData,
-         c.hash_file_most_current).verify(whitelist=[x.replace(os.altsep, os.sep) for x in args.filter])
+         c.hash_file_most_current).verify(whitelist=filter_unified)
 
 
 class SmartFormatter(argparse.HelpFormatter):
@@ -1630,10 +1639,11 @@ if __name__ == "__main__":
     elif args.verbosity >= 2:
         stdohandler.setLevel(LOG_LVL_EXTRAVERBOSE)
 
-    if hasattr(args, "whitelist"):
-        # replace non-standard path separator with os.sep so users can use both
-        alt = '/' if os.sep == '\\' else '\\'
-        args.whitelist = [pat.replace(alt, os.sep) for pat in args.whitelist] if args.whitelist else None
-        args.blacklist = [pat.replace(alt, os.sep) for pat in args.blacklist] if args.blacklist else None
+    if hasattr(args, "whitelist") and os.sep == '\\':
+        # so windows users can use both /  and \ (unix doesn't have os.altsep)
+        args.whitelist = ([pat.replace(os.altsep, os.sep) for pat in args.whitelist]
+                          if args.whitelist else None)
+        args.blacklist = ([pat.replace(os.altsep, os.sep) for pat in args.blacklist]
+                          if args.blacklist else None)
     
     args.func(args)
