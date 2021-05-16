@@ -492,7 +492,9 @@ class ChecksumHelper:
                 if not include_path(rel_from_root, whitelist, blacklist):
                     continue
 
-                include, hashed_file = self._build_verfiy_hash(file_path, algo_name)
+                include, hashed_file = self._build_verfiy_hash(file_path, algo_name,
+                        collect_fstat=collect_fstat, skip_unchanged=skip_unchanged,
+                        single_hash=single_hash)
                 if include:
                     incremental.set_entry(file_path, cast(HashedFile, hashed_file))
 
@@ -503,7 +505,7 @@ class ChecksumHelper:
         return incremental
 
     def _build_verfiy_hash(
-            self, file_path: str, algo_name: str,
+            self, file_path: str, algo_name: str, single_hash: bool = False,
             rehash_other_types: bool = True, collect_fstat: bool = True,
             skip_unchanged: bool = False) -> Tuple[bool, Optional['HashedFile']]:
         # NOTE: assumes self.hash_file_most_current is not None
@@ -538,7 +540,7 @@ class ChecksumHelper:
                               1 if cast(float, mtime) > cast(float, old.mtime) else -1)
 
             # we already compared the mtime so now we can update the mtime on old
-            if not old_has_mtime:
+            if not old_has_mtime and mtime is not None:
                 old.mtime = mtime
 
             skip = False
@@ -561,7 +563,14 @@ class ChecksumHelper:
                 # assume that we will be able to compute hashes after computing new_hash
                 if current_hash == old.hash_bytes:
                     logger.infovv("Old and new hashes match for file %s!", file_path)  # type: ignore
-                    include = self.options["include_unchanged_files_incremental"]
+
+                    # include if we didn't have an mtime before ONLY if we don't want
+                    # to force a single hash file
+                    if not old_has_mtime and mtime is not None and not single_hash:
+                        include = True
+                    # otherwise only if the option is set
+                    else:
+                        include = self.options["include_unchanged_files_incremental"]
                     new = old
                 else:
                     if comp_mtime == 0:
@@ -1201,27 +1210,6 @@ class ChecksumHelperData:
             else:
                 logger.warning("%s: %d missing files!", self.get_path(), len(missing))
         return crc_errors, missing, matches
-
-
-class HashType(enum.Enum):
-    MD4 = 0  # not part of hashlib.algorithms_guaranteed
-    MD5 = enum.auto()
-    SHA1 = enum.auto()
-    SHA224 = enum.auto()
-    SHA256 = enum.auto()
-    SHA384 = enum.auto()
-    SHA512 = enum.auto()
-    BLAKE2B = enum.auto()
-    BLAKE2S = enum.auto()
-    SHAKE_128 = enum.auto()
-    SHAKE_256 = enum.auto()
-    SHA3_224 = enum.auto()
-    SHA3_256 = enum.auto()
-    SHA3_384 = enum.auto()
-    SHA3_512 = enum.auto()
-    # algorithms_available
-    # ripemd160
-    # whirlpool
 
 
 @dataclass

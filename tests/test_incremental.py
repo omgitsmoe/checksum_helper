@@ -60,6 +60,69 @@ def test_do_incremental(setup_dir_to_checksum):
     assert(verified_sha_contents == generated_sha_contents)
 
 
+@pytest.mark.parametrize("options, verified_cshd_name",
+        [# below should include sub1\new 4.txt even though it didn't change and
+         # include_unchanged is False since sub1\new 4.txt is from a .sha512 and
+         # we didn't have an mtime before
+         ({
+            "include_unchanged_files_incremental": False,
+            "discover_hash_files_depth": -1,
+            "incremental_skip_unchanged": False,
+            "incremental_collect_fstat": True,
+          }, "with_cshd_collect.cshd"),
+         ({
+            "include_unchanged_files_incremental": False,
+            "discover_hash_files_depth": 0,
+            "incremental_skip_unchanged": True,
+            "incremental_collect_fstat": False,
+          }, "with_cshd_skip.cshd"),
+         ({
+            "include_unchanged_files_incremental": True,
+            "discover_hash_files_depth": -1,
+            "incremental_skip_unchanged": False,
+            "incremental_collect_fstat": False,
+          }, "with_cshd_full.cshd"),
+        ]
+)
+def test_do_incremental_cshd(options, verified_cshd_name, setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+    root_dir = os.path.join(tmpdir, "tt")
+    # use "" as last join to make sure tmpdir_failed_md5 ends in os.sep so it gets treated as
+    # dir path and not as file path
+    # When using copytree, you need to ensure that src exists and dst does not exist.
+    # Even if the top level directory contains nothing, copytree won't work because it
+    # expects nothing to be at dst and will create the top level directory itself.
+    shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "with_cshd"),
+                    os.path.join(root_dir, ""))
+
+    if options['incremental_skip_unchanged']:
+        # modify files and set mtime to original -> they should not be included
+        mod1 = os.path.join(root_dir, "new 2.txt")
+        with open(mod1, "w") as f:
+            f.write("MODIFIED1")
+        os.utime(mod1, times=(1524334794.4067194, 1524334794.4067194))
+        mod2 = os.path.join(root_dir, "sub1", "sub2", "new 3.txt")
+        with open(mod2, "w") as f:
+            f.write("MODIFIED2")
+        os.utime(mod2, times=(1524334698.6291595, 1524334698.6291595))
+
+    checksume_hlpr = ChecksumHelper(root_dir, hash_filename_filter=None)
+    checksume_hlpr.options.update(options)
+    assert os.path.isabs(checksume_hlpr.root_dir)
+
+    incremental = checksume_hlpr.do_incremental_checksums("sha512")
+    assert incremental is not None
+    incremental.write()
+
+    verified_cshd_contents = read_file(
+        os.path.join(TESTS_DIR, "test_incremental_files", verified_cshd_name))
+
+    generated_cshd_name = f"tt_{time.strftime('%Y-%m-%d')}.cshd"
+    generated_cshd_contents = read_file(os.path.join(root_dir, generated_cshd_name))
+
+    assert(verified_cshd_contents == generated_cshd_contents)
+
+
 @pytest.mark.parametrize(
         "depth, hash_fn_filter, include_unchanged, whitelist, blacklist, verified_sha_name",
         [
@@ -306,7 +369,9 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
     most_current.entries[abs_fp].hash_bytes = bu_hash
 
     #
-    # hash recorded -> no mtime -> same
+    # hash recorded -> no mtime -> same + include since we now have an mtime
+    # we're doing an incremental checksum so using that mtime is fine
+    # (would not be if it was just a verify)
     #
 
     caplog.clear()
@@ -319,7 +384,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
     most_current.entries[abs_fp].mtime = None
 
     include, generated = ch._build_verfiy_hash(abs_fp, "sha512")
-    assert include is ch.options['include_unchanged_files_incremental']
+    assert include is True
     assert generated.meta_eql(  # type: ignore
             HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
 

@@ -1,1 +1,0 @@
-- add tests inc/verify (-> verify_cshd) with .cshd
