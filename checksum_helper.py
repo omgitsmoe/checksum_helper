@@ -1615,7 +1615,7 @@ if __name__ == "__main__":
     move.add_argument("root_dir", type=str,
                       help="Root directory where we look for hash files in subdirectories. "
                            "Make sure to choose this wisely since file paths of moved files "
-                           "won't be in dirs above the root_dir!")
+                           "won't be modified in dirs above the root_dir!")
     move.add_argument("source_path", type=str,
                       help="Path to the file or folder that should be moved")
     move.add_argument("mv_path", type=str,
