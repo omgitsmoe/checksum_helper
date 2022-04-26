@@ -1,46 +1,77 @@
 import os
 import logging
 import time
+import pytest
 
-from utils import TESTS_DIR, Args
+from utils import TESTS_DIR, Args, hash_contents
 
 from checksum_helper import ChecksumHelper, _cl_verify_hfile, _cl_verify_all, _cl_verify_filter
 
 
-def x_contains_all_y(x, y) -> bool:
+def x_contains_all_y(x, y) -> None:
     for yy in y:
-        if yy in x:
-            continue
-        else:
-            return False
-    return True
+        assert yy in x
 
 
-def test_verify_cshd(caplog):
+@pytest.fixture
+def verify_cshd_2failed_files():
     test_verify_root = os.path.join(TESTS_DIR, "test_verify_files", "tt")
+    hfile_path = os.path.join(test_verify_root, "new_cshd_1+3+missing_edit.cshd")
+    hfile_path_old = os.path.join(test_verify_root, "new_cshd_1+3+missing.cshd")
+    with open(hfile_path_old, "r", encoding="UTF-8-SIG") as f:
+        hf_contents = f.read()
+
+    # create 2 files with wrong checksums
+    corrupt_file_path = os.path.join(test_verify_root, "same_mtime_corrupt.txt")
+    with open(corrupt_file_path, "w", encoding="utf-8") as f:
+        f.write("same_mtime_corrupt")
+    corrupt_file_mtime = os.stat(corrupt_file_path).st_mtime
+
+    older_file_path = os.path.join(test_verify_root, "older_mtime_fail.txt")
+    with open(older_file_path, "w", encoding="utf-8") as f:
+        f.write("older_mtime_fail")
+    older_file_mtime = os.stat(older_file_path).st_mtime
+
+    hf_contents = f"{hf_contents.strip()}\n{corrupt_file_mtime},sha512,ea28ce6b962ad4d481795e93d8ac72104c1eb5c474fdfef54c3693833859fd0bfc047e6ecaa09412c237f2d835d2bfdf1801f8ac2de2edc02fa6d571af9e3405 same_mtime_corrupt.txt\n{older_file_mtime + 2},sha512,ea28ce6b961ad4d481795e93d8ac42104c1eb5c474fdfef54c3693833859fd0bfc047e6ecaa09412c237f2d835d2bfdf1801f8ac2de2edc02fa6d571af9e3405 older_mtime_fail.txt"
+    with open(hfile_path, "w", encoding="UTF-8") as w:
+        w.write(hf_contents)
+
+    yield hfile_path
+
+    os.remove(corrupt_file_path)
+    os.remove(older_file_path)
+    os.remove(hfile_path)
+
+def test_verify_cshd(caplog, capsys, verify_cshd_2failed_files):
+    test_verify_root = os.path.join(TESTS_DIR, "test_verify_files", "tt")
+    hfile_path = verify_cshd_2failed_files
     # caplog.set_level sets on root logger by default which is somehow not the logger setup by
     # checksum_helper so specify our logger in the kw param
     caplog.set_level(logging.INFO, logger='Checksum_Helper')
-    # ------------ 1 wrong crc, 1 missing ----------
-    hfile_path = os.path.join(test_verify_root, "new_cshd_1+3+missing.cshd")
+    # ------------ 3 wrong crc, 1 missing ----------
     a = Args(hash_file_name=[hfile_path])
     starting_cwd = os.getcwd()
 
     caplog.clear()
     # files_total, nr_matches, nr_missing, nr_crc_errors
-    assert _cl_verify_hfile(a) == (3, 1, 1, 1)
+    assert _cl_verify_hfile(a) == (5, 1, 1, 3)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.INFO, f'new_cshd.txt: SHA512 OK'),
-        ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.WARNING,
+         f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED -> OUTDATED HASH (file is newer)'),
         ('Checksum_Helper', logging.WARNING, f'sub2{os.sep}new_cshd_missing.txt: MISSING'),
+        ('Checksum_Helper', logging.ERROR,
+         f'same_mtime_corrupt.txt: SHA512 FAILED -> CORRUPTED (same modification time)'),
+        ('Checksum_Helper', logging.WARNING,
+         f'older_mtime_fail.txt: SHA512 FAILED -> OUTDATED HASH (file is older)'),
+        ('Checksum_Helper', logging.WARNING, f'{hfile_path}: 3 files with wrong CRCs!'),
+        ('Checksum_Helper', logging.WARNING, f'{hfile_path}: 1 missing files!'),
     ])
 
-    assert caplog.record_tuples[3:] == [
-        ('Checksum_Helper', logging.WARNING, f'{test_verify_root}{os.sep}new_cshd_1+3+missing.cshd: 1 files with wrong CRCs!'),
-        ('Checksum_Helper', logging.WARNING, f'{test_verify_root}{os.sep}new_cshd_1+3+missing.cshd: 1 missing files!'),
-    ]
+    captured = capsys.readouterr()
+    assert captured.out == f'\nVerified hash files: {hfile_path}\n\nMISSING FILES:\n\n    ROOT FOLDER: D:\\SYNC\\coding\\checksum_helper\\tests\\test_verify_files\\tt\\\n    |--> sub2\\new_cshd_missing.txt\n\nFAILED CHECKSUMS:\n\n    ROOT FOLDER: D:\\SYNC\\coding\\checksum_helper\\tests\\test_verify_files\\tt\\\n    |--> OUTDATED HASH (file is newer): sub1\\new_cshd_3.txt\n    |--> CORRUPTED (same modification time): same_mtime_corrupt.txt\n    |--> OUTDATED HASH (file is older): older_mtime_fail.txt\n\nSUMMARY:\n    TOTAL FILES: 5\n    MATCHES: 1\n    FAILED CHECKSUMS: 3\n    MISSING: 1\n'
 
 def test_verify_hfile(caplog):
     test_verify_root = os.path.join(TESTS_DIR, "test_verify_files", "tt")
@@ -57,7 +88,7 @@ def test_verify_hfile(caplog):
     assert _cl_verify_hfile(a) == (3, 2, 0, 1)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
@@ -80,7 +111,7 @@ def test_verify_hfile(caplog):
     assert _cl_verify_hfile(a) == (3, 2, 1, 0)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.INFO, f'new 2.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, f'new 8.txt: MISSING'),
         ('Checksum_Helper', logging.INFO, f'new 4.txt: SHA512 OK'),
@@ -101,7 +132,7 @@ def test_verify_hfile(caplog):
     assert _cl_verify_hfile(a) == (3, 3, 0, 0)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.INFO, f'new 2.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, f'new 3.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, f'new 4.txt: SHA512 OK'),
@@ -119,7 +150,7 @@ def test_verify_hfile(caplog):
     assert _cl_verify_hfile(a) == (11, 7, 2, 2)
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.WARNING, f'new 3.txt: SHA512 FAILED'),
         ('Checksum_Helper', logging.INFO, f'new 4.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, f'sub1{os.sep}new 2.txt: SHA512 OK'),
@@ -150,7 +181,7 @@ def test_verify_all(caplog):
     caplog.clear()
     # files_total, nr_matches, nr_missing, nr_crc_errors
     assert _cl_verify_all(a) == (16, 10, 3, 3)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.INFO, f'new 2.txt: MD5 OK'),
         ('Checksum_Helper', logging.WARNING, f'new 3.txt: SHA512 FAILED'),
         ('Checksum_Helper', logging.INFO, f'new 4.txt: SHA512 OK'),
@@ -164,7 +195,8 @@ def test_verify_all(caplog):
         ('Checksum_Helper', logging.WARNING, f'sub5{os.sep}sub1{os.sep}file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, f'sub6{os.sep}file1.txt: MISSING'),
         ('Checksum_Helper', logging.INFO, f'new_cshd.txt: SHA512 OK'),
-        ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.WARNING,
+         f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED -> OUTDATED HASH (file is newer)'),
         ('Checksum_Helper', logging.WARNING, f'sub2{os.sep}new_cshd_missing.txt: MISSING'),
         ('Checksum_Helper', logging.INFO, f'sub3{os.sep}sub2{os.sep}new_cshd2.txt: SHA512 OK'),
     ])
@@ -180,7 +212,7 @@ def test_verify_all(caplog):
 
     caplog.clear()
     assert _cl_verify_all(a) == (4, 3, 1, 0)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.INFO, f'new 2.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, f'new 3.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, f'new 4.txt: SHA512 OK'),
@@ -197,7 +229,7 @@ def test_verify_all(caplog):
 
     caplog.clear()
     assert _cl_verify_all(a) == (20, 13, 4, 3)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
@@ -219,7 +251,8 @@ def test_verify_all(caplog):
         ('Checksum_Helper', logging.WARNING, f'sub6{os.sep}file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}sub2{os.sep}new 8.txt: MISSING'),
         ('Checksum_Helper', logging.INFO, f'new_cshd.txt: SHA512 OK'),
-        ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.WARNING,
+         f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED -> OUTDATED HASH (file is newer)'),
         ('Checksum_Helper', logging.WARNING, f'sub2{os.sep}new_cshd_missing.txt: MISSING'),
         ('Checksum_Helper', logging.INFO, f'sub3{os.sep}sub2{os.sep}new_cshd2.txt: SHA512 OK'),
     ])
@@ -236,7 +269,7 @@ def test_verify_all(caplog):
 
     caplog.clear()
     assert _cl_verify_all(a) == (15, 10, 3, 2)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
@@ -279,7 +312,7 @@ def test_verify_filter(caplog):
 
     caplog.clear()
     _cl_verify_filter(a)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.INFO, f'new 2.txt: MD5 OK'),
         ('Checksum_Helper', logging.WARNING, f'new 3.txt: SHA512 FAILED'),
         ('Checksum_Helper', logging.INFO, f'new 4.txt: SHA512 OK'),
@@ -289,7 +322,8 @@ def test_verify_filter(caplog):
         ('Checksum_Helper', logging.INFO, f'sub1{os.sep}sub2{os.sep}new 2.txt: SHA512 OK'),
         ('Checksum_Helper', logging.INFO, f'sub1{os.sep}sub2{os.sep}new 3.txt: SHA512 OK'),
         ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}sub2{os.sep}new 4.txt: SHA512 FAILED'),
-        ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.WARNING,
+         f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED -> OUTDATED HASH (file is newer)'),
     ])
 
     assert caplog.record_tuples[10:] == [
@@ -307,7 +341,7 @@ def test_verify_filter(caplog):
 
     caplog.clear()
     _cl_verify_filter(a)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
@@ -337,7 +371,7 @@ def test_verify_filter(caplog):
 
     caplog.clear()
     _cl_verify_filter(a)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
@@ -355,7 +389,8 @@ def test_verify_filter(caplog):
         ('Checksum_Helper', logging.WARNING, f'sub5{os.sep}sub1{os.sep}file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, f'sub6{os.sep}file1.txt: MISSING'),
         ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}sub2{os.sep}new 8.txt: MISSING'),
-        ('Checksum_Helper', logging.WARNING, f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED'),
+        ('Checksum_Helper', logging.WARNING,
+         f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED -> OUTDATED HASH (file is newer)'),
         ('Checksum_Helper', logging.WARNING, f'sub2{os.sep}new_cshd_missing.txt: MISSING'),
         ('Checksum_Helper', logging.INFO, f'sub3{os.sep}sub2{os.sep}new_cshd2.txt: SHA512 OK'),
     ])
@@ -377,7 +412,7 @@ def test_verify_filter(caplog):
 
     caplog.clear()
     _cl_verify_filter(a)
-    assert x_contains_all_y(caplog.record_tuples, [
+    x_contains_all_y(caplog.record_tuples, [
         ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"

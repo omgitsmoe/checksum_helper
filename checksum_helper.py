@@ -507,6 +507,7 @@ class ChecksumHelper:
 
         skip_unchanged = self.options['incremental_skip_unchanged']
         collect_fstat = self.options['incremental_collect_fstat']
+        last_report = time.time()
         for dirpath, dirnames, fnames in os.walk(start_path):
             # filter dirnames before traversing into them
             dirnames[:] = [d for d in dirnames
@@ -515,6 +516,12 @@ class ChecksumHelper:
 
             for fname in fnames:
                 file_path = os.path.join(dirpath, fname)
+
+                # status report every N seconds
+                if time.time() - last_report >= 30:
+                    logger.info("STATUS: Checking file \"%s\"", file_path)
+                    last_report = time.time()
+
                 # replace works here for computing the relpath since all paths share
                 # self.root_dir (it's part of dirpath)
                 # rel_fpath = file_path[len(start_path) + 1:]
@@ -750,7 +757,10 @@ class ChecksumHelper:
         # if we move a dir to an existing dir we move the dir into the existing dir:
         # shutil.move("dir", "into") -> 'into\\dir' is returned
         try:
-            dest_path = shutil.move(source_path, dest_path)
+            # shutil.move returns None if it's a rename OF a DIRECTORY in the CURRENT DIR
+            mb_dest_path = shutil.move(source_path, dest_path)
+            if mb_dest_path is not None:
+                dest_path = mb_dest_path
         except shutil.Error as e:
             logger.error("Couldn't move file(s): %s", str(e))
             return None
@@ -1200,8 +1210,8 @@ class ChecksumHelperData:
         self.entries = {fname: hash_str for fname, hash_str in self.entries.items()
                         if os.path.isfile(fname)}
 
-    def verify(self, whitelist: Optional[Sequence[str]]=None) -> Tuple[List[str], List[str], int]:
-        crc_errors: List[str] = []
+    def verify(self, whitelist: Optional[Sequence[str]]=None) -> Tuple[List[Tuple[str, str]], List[str], int]:
+        crc_errors: List[Tuple[str, str]] = []
         missing: List[str] = []
         matches = 0
         if not self.entries:
@@ -1233,8 +1243,24 @@ class ChecksumHelperData:
                 matches += 1
                 logger.info("%s: %s OK", rel_fpath, hashed_file.hash_type.upper())
             else:
-                crc_errors.append(rel_fpath)
-                logger.warning("%s: %s FAILED", rel_fpath, hashed_file.hash_type.upper())
+                # give more information if we have mtime data
+                if hashed_file.mtime is not None:
+                    current_mtime = cast(float, hashed_file.fetch_mtime(hashed_file.filename))
+                    if current_mtime > hashed_file.mtime:
+                        logger.warning("%s: %s FAILED -> OUTDATED HASH (file is newer)",
+                                       rel_fpath, hashed_file.hash_type.upper())
+                        crc_errors.append(("OUTDATED HASH (file is newer)", rel_fpath))
+                    elif current_mtime == hashed_file.mtime:
+                        logger.error("%s: %s FAILED -> CORRUPTED (same modification time)",
+                                     rel_fpath, hashed_file.hash_type.upper())
+                        crc_errors.append(("CORRUPTED (same modification time)", rel_fpath))
+                    else:
+                        logger.warning("%s: %s FAILED -> OUTDATED HASH (file is older)",
+                                       rel_fpath, hashed_file.hash_type.upper())
+                        crc_errors.append(("OUTDATED HASH (file is older)", rel_fpath))
+                else:
+                    crc_errors.append(("", rel_fpath))
+                    logger.warning("%s: %s FAILED", rel_fpath, hashed_file.hash_type.upper())
 
         if matches and not crc_errors and not missing:
             logger.info("%s: No missing files and all files matching their hashes", self.get_path())
@@ -1308,8 +1334,8 @@ class HashedFile:
         except PermissionError:
             logger.warning("Permission to open the file for hashing was denied: %s!", filename)
             result = None
-        finally:
-            return result
+
+        return result
 
     def copy(self) -> 'HashedFile':
         return copy.copy(self)
@@ -1443,7 +1469,7 @@ def _cl_verify_hfile(args: argparse.Namespace) -> Tuple[int, int, int, int]:
 
 
 def _print_summary(files_total: int, missing: List[Tuple[str, List[str]]],
-                   failed_checksums: List[Tuple[str, List[str]]]):
+                   failed_checksums: List[Tuple[str, List[Tuple[str, str]]]]):
 
     nr_missing = sum(len(x[1]) for x in missing)
     nr_failed_checksums = sum(len(x[1]) for x in failed_checksums)
@@ -1460,11 +1486,12 @@ def _print_summary(files_total: int, missing: List[Tuple[str, List[str]]],
 
     if any(x[1] for x in failed_checksums):
         print("\nFAILED CHECKSUMS:")
-        for root, fnames in failed_checksums:
-            if not fnames:
+        for root, failure_type_fnames in failed_checksums:
+            if not failure_type_fnames:
                 continue
             print(f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> ", end="")
-            print(f"\n    |--> ".join(fnames))
+            print(f"\n    |--> ".join(f"{failure_type}: {fname}"
+                  for failure_type, fname in failure_type_fnames))
     else:
         print("\nNO FAILED CHECKSUMS!")
 

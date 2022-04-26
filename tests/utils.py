@@ -3,6 +3,7 @@ import os
 import shutil
 import json
 import pickle
+import hashlib
 
 from typing import List
 
@@ -118,3 +119,10 @@ def compare_lines_sorted(a: str, b: str) -> None:
     # strip BOM \ufeff
     assert sorted(ln for ln in a.strip('\ufeff').splitlines()) == sorted(
             ln for ln in b.strip('\ufeff').splitlines())
+
+def hash_contents(algorithm, contents_to_hash) -> str:
+    # construct a hash object by calling the appropriate constructor function
+    hash_obj = hashlib.new(algorithm)
+    hash_obj.update(contents_to_hash)
+
+    return hash_obj.hexdigest()
