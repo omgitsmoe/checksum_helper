@@ -705,8 +705,16 @@ class ChecksumHelper:
 
         missing_files = all_files - file_paths
 
-        # @Cleanup remove empty folders from missing dirs
-        missing_dirs = [d for d in missing_dirs if len(os.listdir(d)) > 0]
+        missing_dirs_non_empty = []
+        for d in missing_dirs:
+            try:
+                if len(os.listdir(d)) > 0:
+                    missing_dirs_non_empty.append(d)
+            except PermissionError:
+                logger.info("Access denied while opening folder: %s", d)
+            except FileNotFoundError:
+                # folder was (re)moved
+                pass
 
         if missing_dirs or missing_files:
             print("!!! NOT CHECKED IF CHECKSUMS STILL MATCH THE FILES !!!")
@@ -715,7 +723,7 @@ class ChecksumHelper:
                   "command line):")
             # convert to relative paths here
             missing_format = [f"D    {os.path.relpath(dp, start=self.root_dir)}"
-                              for dp in missing_dirs]
+                              for dp in missing_dirs_non_empty]
             missing_format.extend((f"F    {os.path.relpath(fp, start=self.root_dir)}"
                                    for fp in sorted(missing_files)))
             print("\n".join(missing_format))
