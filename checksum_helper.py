@@ -739,8 +739,16 @@ class ChecksumHelper:
 
         # make sure we're reading all the hash files by always using max depth
         # without a filename_filter (that's why we can't use self.all_hash_files)
+        # warn about max depth but let the user choose whatever they want
+        depth = self.options["discover_hash_files_depth"]
+        if depth != -1:
+            print("WARNING: Moving files with a depth limit might leave invalid paths in "
+                  "hash files - the recommended depth is unlimited (-1).")
+            if not cli_yes_no("Continue with limited depth?"):
+                return
+
         all_hash_files = []
-        for hf_path in discover_hash_files(self.root_dir, depth=-1, exclude_pattern=None):
+        for hf_path in discover_hash_files(self.root_dir, depth=depth, exclude_pattern=None):
             cshd = ChecksumHelperData(self, hf_path)
             cshd.read()
             all_hash_files.append(cshd)
@@ -1516,8 +1524,14 @@ def _cl_verify_filter(args: argparse.Namespace) -> None:
     c.build_most_current()
     # so windows users can use both /  and \ (unix doesn't have os.altsep)
     filter_unified = [x.replace(os.altsep, os.sep) for x in args.filter] if os.sep == '\\' else args.filter
-    cast(ChecksumHelperData,
-         c.hash_file_most_current).verify(whitelist=filter_unified)
+    current_hf = cast(ChecksumHelperData, c.hash_file_most_current)
+    crc_errors, missing, matches = current_hf.verify(whitelist=filter_unified)
+
+    # calculate total files since current_hf will have all the entries and not just
+    # the filtered ones we're checking!
+    files_total = len(crc_errors) + len(missing) + matches
+    _print_summary(
+        files_total, [(args.root_dir, missing)], [(args.root_dir, crc_errors)])
 
 
 class SmartFormatter(argparse.HelpFormatter):
