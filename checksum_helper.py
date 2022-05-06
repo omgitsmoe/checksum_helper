@@ -899,10 +899,18 @@ class ChecksumHelperData:
         return os.path.join(self.root_dir, self.filename)
 
     def read(self) -> None:
-        if self.single_hash:
-            self._read_from_single_hash_file()
-        else:
-            self._read()
+        # TODO handle failure
+        try:
+            if self.single_hash:
+                self._read_from_single_hash_file()
+            else:
+                self._read()
+        except Exception as e:
+            logger.error(
+                "Reading of hash file %s failed due to an unknown error!"
+                " Use the information below to open a github issue:\n%s",
+                self.get_path(), str(e))
+            # TODO should we really continue here?
 
     def _read(self) -> None:
         try:
@@ -997,6 +1005,8 @@ class ChecksumHelperData:
             # text mode on a GNU system (same is true for fopen from the C stdlib:
             # The character 'b' shall have no effect, but is allowed for ISO C standard conformance)
             stripped = ln.strip()
+            if not stripped:
+                continue
 
             try:
                 first_space = stripped.index(" ")
@@ -1040,8 +1050,18 @@ class ChecksumHelperData:
             # also needed since we always use '/' as path sep when writing the file
             # but use os.sep while running (since unix can't deal with '\' as path sep)
             abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
+
+            # non-hex in hash_str
+            try:
+                hash_bytes = binascii.a2b_hex(hash_str)
+            except binascii.Error:
+                logger.warning("Read failed: there were invalid lines in hash file '%s'. "
+                               "The correct format is:\n"
+                               "[0-9a-fA-F]+ ( |*)[^/]+", self.get_path())
+                return
+
             self.entries[abs_normed_path] = HashedFile(
-                    abs_normed_path, None, cast(str, hash_type), binascii.a2b_hex(hash_str), text_mode)
+                    abs_normed_path, None, cast(str, hash_type), hash_bytes, text_mode)
 
     def _check_write_file(self, force=False) -> bool:
         write_file = False
@@ -1463,6 +1483,7 @@ def _cl_verify_all(args: argparse.Namespace) -> Tuple[int, int, int, int]:
     return files_total, files_total - nr_missing - nr_failed_checksums, nr_missing, nr_failed_checksums
 
 
+# TODO warn about skipped hash files!! (at the end)
 def _cl_verify_hfile(args: argparse.Namespace) -> Tuple[int, int, int, int]:
     files_total = 0
     all_missing = []
