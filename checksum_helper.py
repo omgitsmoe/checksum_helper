@@ -1616,7 +1616,7 @@ if __name__ == "__main__":
                                help="increase output verbosity")
     parent_parser.add_argument("--log", default=None, metavar="LOGPATH",
                                help="Write logs to [LOGPATH]")
-    parent_parser.add_argument("--log-level", default="debug", metavar="LOGPATH",
+    parent_parser.add_argument("--log-level", default="info", metavar="LOGPATH",
                                # choices=("debug", "extraverbose", "verbose", "info", "warning", "error"),
                                help="Log levels (from most verbose to least verbose: debug, "
                                     "extraverbose, verbose, info, warning, error")
@@ -1761,25 +1761,25 @@ if __name__ == "__main__":
         # default to stdout, but stderr would be better (use sys.stderr, then exit(1))
         parser.print_help()
         sys.exit(0)
-
+    
     if args.log is not None:
         handler = RollingFileHandler(
             args.log,
             maxBytes=10485760, # 10MiB
             encoding="UTF-8")
 
-        log_level_str = args.log_level.lower()
+        log_level_str = args.log_level.strip().lower()
         log_level = None
-        if log_level == "debug":
+        if log_level_str == "debug":
             log_level = logging.DEBUG
-        if args.log_level == "info":
+        elif log_level_str == "info":
             log_level = logging.INFO
-        elif args.log_level == "warning":
+        elif log_level_str == "warning":
             log_level = logging.WARNING
-        elif args.log_level == "error":
+        elif log_level_str == "error":
             log_level = logging.ERROR
         else:
-            print("Log level\"", log_level_str, "\"not recognized, using default log level \"DEBUG\"")
+            print(f"Log level \"{log_level_str}\" not recognized, using default log level \"info\"")
             log_level = logging.DEBUG
 
         handler.setLevel(log_level)
@@ -1792,6 +1792,18 @@ if __name__ == "__main__":
 
         # add the handler to the logger
         logger.addHandler(handler)
+
+    # if our output gets written to a pipe it is not encoded by default
+    # so set the encoding here so we dont get UnicodeEncodeErrors
+    if not sys.stdout.isatty():
+        # stdout is not going to a teletype/terminal but into a pipe
+        # works with cmd but not with PowerShell<v6 (since it doesnt use utf-8 by default)
+        # (has to be set manually `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()`
+        #  or enabled globally in locale settings)
+        # NOTE: warn after (potentially) installing the file handler
+        logger.info("Pipe detected: Older PowerShell versions might need to manually set the encoding "
+                    "to UTF-8 to get proper output!")
+        sys.stdout.reconfigure(encoding="utf-8") # >=py3.7
 
 
     if args.verbosity == 1:
