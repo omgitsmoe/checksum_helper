@@ -44,22 +44,6 @@ logging.Logger.infovv = infovv  # type: ignore
 logger = logging.getLogger("Checksum_Helper")
 logger.setLevel(logging.DEBUG)
 
-handler = RotatingFileHandler(
-    os.path.join(MODULE_PATH, LOG_BASENAME),
-    maxBytes=1048576,
-    backupCount=5,
-    encoding="UTF-8")
-handler.setLevel(logging.DEBUG)
-
-# create a logging format
-formatter = logging.Formatter(
-    "%(asctime)-15s - %(name)-9s - %(levelname)-6s - %(message)s")
-# '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-handler.setFormatter(formatter)
-
-# add the handlers to the logger
-logger.addHandler(handler)
-
 # create streamhandler
 stdohandler = logging.StreamHandler(sys.stdout)
 stdohandler.setLevel(logging.INFO)
@@ -1565,6 +1549,44 @@ class SmartFormatter(argparse.HelpFormatter):
         # this is the RawTextHelpFormatter._split_lines
         return argparse.HelpFormatter._split_lines(self, text, width)
 
+# adapted from src: https://stackoverflow.com/questions/40150821/in-the-logging-modules-rotatingfilehandler-how-to-set-the-backupcount-to-a-pra
+# by Asiel Diaz Benitez modified by SBK
+class RollingFileHandler(RotatingFileHandler):
+
+    extension: str
+    absFileNameWithoutExtension: str
+
+    def __init__(self, filename, mode='a', maxBytes=0, encoding=None, delay=False):
+        self.last_backup_cnt: int = 0
+        super(RollingFileHandler, self).__init__(filename=filename,
+                                                 mode=mode,
+                                                 maxBytes=maxBytes,
+                                                 backupCount=0,
+                                                 encoding=encoding,
+                                                 delay=delay)
+        try:
+            self.absFileNameWithoutExtension, self.extension = self.baseFilename.rsplit(".", 1)
+        except ValueError:
+            # no extension
+            self.absFileNameWithoutExtension = self.baseFilename
+            self.extension = ""
+
+    # override
+    def doRollover(self):
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        # --modified part--
+        self.last_backup_cnt += 1
+        nextName = (f"{self.absFileNameWithoutExtension}_"
+                    f"{self.last_backup_cnt}{'.' + self.extension if self.extension else ''}")
+        self.rotate(self.baseFilename, nextName)
+        # --modified part--
+
+        if not self.delay:
+            self.stream = self._open()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Combine discovered checksum files into "
@@ -1592,6 +1614,12 @@ if __name__ == "__main__":
                                metavar="DEPTH")
     parent_parser.add_argument("-v", "--verbosity", action="count", default=0,
                                help="increase output verbosity")
+    parent_parser.add_argument("--log", default=None, metavar="LOGPATH",
+                               help="Write logs to [LOGPATH]")
+    parent_parser.add_argument("--log-level", default="debug", metavar="LOGPATH",
+                               # choices=("debug", "extraverbose", "verbose", "info", "warning", "error"),
+                               help="Log levels (from most verbose to least verbose: debug, "
+                                    "extraverbose, verbose, info, warning, error")
 
     incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser],
                                         help="Discover hash files in subdirectories and verify"
@@ -1733,6 +1761,38 @@ if __name__ == "__main__":
         # default to stdout, but stderr would be better (use sys.stderr, then exit(1))
         parser.print_help()
         sys.exit(0)
+
+    if args.log is not None:
+        handler = RollingFileHandler(
+            args.log,
+            maxBytes=10485760, # 10MiB
+            encoding="UTF-8")
+
+        log_level_str = args.log_level.lower()
+        log_level = None
+        if log_level == "debug":
+            log_level = logging.DEBUG
+        if args.log_level == "info":
+            log_level = logging.INFO
+        elif args.log_level == "warning":
+            log_level = logging.WARNING
+        elif args.log_level == "error":
+            log_level = logging.ERROR
+        else:
+            print("Log level\"", log_level_str, "\"not recognized, using default log level \"DEBUG\"")
+            log_level = logging.DEBUG
+
+        handler.setLevel(log_level)
+
+        # create a logging format
+        formatter = logging.Formatter(
+            "%(asctime)-15s - %(name)-9s - %(levelname)-6s - %(message)s")
+        # '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        handler.setFormatter(formatter)
+
+        # add the handler to the logger
+        logger.addHandler(handler)
+
 
     if args.verbosity == 1:
         stdohandler.setLevel(LOG_LVL_VERBOSE)
