@@ -4,6 +4,8 @@ import pytest
 import logging
 import time
 
+import checksum_helper
+
 from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args, sort_hf_contents
 from checksum_helper import ChecksumHelper, _cl_move
 
@@ -188,3 +190,45 @@ def test_move_files(src, dst, depth, hash_fn_filter, expected_files_dirname, mov
         assert (sort_hf_contents(read_file(os.path.join(root_dir, hf_current), encoding="UTF-8-SIG")) ==
                 sort_hf_contents(read_file(os.path.join(test_modf_dir_abs, expected_files_dirname,
                                                         hf_expected), encoding="UTF-8-SIG")))
+
+@pytest.fixture
+def mtime_ordered_hfiles(setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+
+    with open(os.path.join(tmpdir, "1.md5"), "w") as f:
+        f.write("342452afbc534 *test.txt\n342452afbc534 *test2.txt\n342452afbc534 *test3.txt\n")
+    time.sleep(1)
+
+    os.makedirs(os.path.join(tmpdir, "sub"))
+    with open(os.path.join(tmpdir, "sub", "2.cshd"), "w") as f:
+        f.write("1234124.5,md5,342452afbc534,test.txt\n1234124.5,md5,342452afbc534,test2.txt\n1234124.5,md5,342452afbc534,test3.txt\n")
+    time.sleep(1)
+
+    with open(os.path.join(tmpdir, "3.md5"), "w") as f:
+        f.write("342452afbc534 *test.txt\n342452afbc534 *test2.txt\n342452afbc534 *test3.txt\n")
+
+    return (tmpdir, ("1.md5", os.path.join("sub", "2.cshd"), "3.md5"))
+
+def test_move_preserves_mtime_ordering(mtime_ordered_hfiles, monkeypatch):
+    root, hfiles = mtime_ordered_hfiles
+
+    monkeypatch.setattr(checksum_helper, "cli_yes_no", lambda x: True)
+
+    src = os.path.join(root, hfiles[0])
+    dst_dir = os.path.join(root, "moved")
+    os.makedirs(dst_dir) # so shutil.move moves it inside instead of renaming to "moved"
+
+    a = Args(root_dir=root, hash_filename_filter=None,
+             discover_hash_files_depth=1, source_path=src, mv_path=dst_dir)
+
+    _cl_move(a)
+
+    hfiles_after_move = [os.path.join("moved", hfiles[0]), *hfiles[1:]]
+    hf_mtimes = []
+    for hf in hfiles_after_move:
+        stats = os.stat(os.path.join(root, hf))
+        hf_mtimes.append((os.path.basename(hf), stats.st_mtime))
+
+    # name order/order there were created in should match their order sorted by ascending mtime
+    assert sorted(hf_mtimes, key=lambda x: x[0]) == sorted(hf_mtimes, key=lambda x: x[1])
+

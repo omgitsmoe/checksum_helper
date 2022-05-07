@@ -5,7 +5,7 @@ import pytest
 
 from utils import TESTS_DIR, setup_tmpdir_param, Args
 
-from checksum_helper import split_path, move_fpath, HashedFile, gen_hash_from_file, ChecksumHelper, _cl_copy, discover_hash_files, ChecksumHelperData
+from checksum_helper import split_path, move_fpath, HashedFile, gen_hash_from_file, ChecksumHelper, _cl_copy_hash_file, discover_hash_files, ChecksumHelperData
 
 
 def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
@@ -21,7 +21,7 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
     monkeypatch.setattr('builtins.input', lambda x: "y")
     a = Args(source_path=os.path.join(root_dir, "tt.sha512"),
              dest_path=f".{os.sep}sub2{os.sep}tt_moved.sha512")
-    hf = _cl_copy(a)
+    hf = _cl_copy_hash_file(a)
     assert os.path.isfile(os.path.join(root_dir, "sub2", "tt_moved.sha512"))
 
     with open(os.path.join(root_dir, "sub2", "tt_moved.sha512"), 'r', encoding='utf-8-sig') as f:
@@ -32,7 +32,7 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
 
     a = Args(source_path=os.path.join(root_dir, "sub2", "tt_moved.sha512"),
              dest_path=f"..{os.sep}sub1{os.sep}sub2{os.sep}tt_moved2.sha512")
-    hf = _cl_copy(a)
+    hf = _cl_copy_hash_file(a)
     assert os.path.isfile(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"))
 
     with open(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"), 'r', encoding='utf-8-sig') as f:
@@ -43,7 +43,7 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
 
     a = Args(source_path=os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"),
              dest_path=f"..{os.sep}.{os.sep}tt_moved3.sha512")
-    hf = _cl_copy(a)
+    hf = _cl_copy_hash_file(a)
     # not reading in the written file only making sure it was written to the correct loc
     assert os.path.isfile(os.path.join(root_dir, "sub1", "tt_moved3.sha512"))
 

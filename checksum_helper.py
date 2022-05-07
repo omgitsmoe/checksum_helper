@@ -370,11 +370,11 @@ class ChecksumHelper:
         self.root_dir: str = os.path.abspath(os.path.normpath(root_dir))
         self.root_dir_name: str = os.path.basename(self.root_dir)
 
-        self.all_hash_files: List[ChecksumHelperData] = []
+        self.all_hash_files: List["ChecksumHelperData"] = []
         # HashFile containing the most current hashes from all the combined hash
         # files that were found using discover_hash_files
         # -> also contains hashes for files that couldve been deleted
-        self.hash_file_most_current: Optional[ChecksumHelperData] = None
+        self.hash_file_most_current: Optional["ChecksumHelperData"] = None
 
         # susbtrings that cant be in filename of hash file
         if hash_filename_filter is None:
@@ -406,6 +406,10 @@ class ChecksumHelper:
                                          depth=self.options["discover_hash_files_depth"],
                                          exclude_pattern=self.hash_filename_filter)
         self.all_hash_files = [ChecksumHelperData(self, hfile_path) for hfile_path in hash_files]
+        # NOTE: we sort the found hash files by their mtime by default so we don't mess with the
+        # ordering when building the most current hashes while we move/copy files and have
+        # to fix and then re-write the hash files
+        self.sort_hash_files_by_mtime()
 
     def read_all_hash_files(self) -> None:
         if not self.all_hash_files:
@@ -421,7 +425,6 @@ class ChecksumHelper:
         if not self.hash_files_initialized():
             self.read_all_hash_files()
 
-        self.sort_hash_files_by_mtime()
         all_single_hash = True
         hash_types: Set[str] = set()
         for hf in self.all_hash_files:
@@ -635,8 +638,12 @@ class ChecksumHelper:
             self.build_most_current()
         cast(ChecksumHelperData, self.hash_file_most_current).write()
 
+    @staticmethod
+    def _sort_hash_files_by_mtime(hash_files: List["ChecksumHelperData"]) -> List["ChecksumHelperData"]:
+        return sorted(hash_files, key=lambda x: cast(float, x.mtime))
+
     def sort_hash_files_by_mtime(self) -> None:
-        self.all_hash_files = sorted(self.all_hash_files, key=lambda x: cast(float, x.mtime))
+        self.all_hash_files = ChecksumHelper._sort_hash_files_by_mtime(self.all_hash_files)
 
     def check_missing_files(self) -> None:
         """
@@ -731,11 +738,17 @@ class ChecksumHelper:
             if not cli_yes_no("Continue with limited depth?"):
                 return
 
-        all_hash_files = []
+        all_hash_files: List[ChecksumHelperData] = []
         for hf_path in discover_hash_files(self.root_dir, depth=depth, exclude_pattern=None):
             cshd = ChecksumHelperData(self, hf_path)
             cshd.read()
             all_hash_files.append(cshd)
+
+        # NOTE: all_hash_files needs to be sorted by asending mtime so we ALWAYS preserve
+        # the ORDER of the hash files on disk so when doing a build_most_current
+        # no outdated sha gets picked
+        all_hash_files = self._sort_hash_files_by_mtime(all_hash_files)
+        # TODO test this ^
 
         (source_path, src_is_dir, dest_path, dest_exists,
             dest_is_dir, real_dest) = move_info(source_path, mv_path, root_dir=self.root_dir)
@@ -765,6 +778,8 @@ class ChecksumHelper:
             logger.error("Couldn't move file(s): %s", str(e))
             return None
 
+        # NOTE: all_hash_files is sorted by ascending mtime to preserve the order
+        # we also need to write ALL hash files to preserve the mtime ordering
         for chsd in all_hash_files:
             if src_is_dir:
                 moved_fn_hash_dict = {}
@@ -1428,7 +1443,7 @@ def _cl_build_most_current(args: argparse.Namespace) -> None:
         logger.error("Could not build most current hash file data for: %s", args.path)
 
 
-def _cl_copy(args: argparse.Namespace) -> ChecksumHelperData:
+def _cl_copy_hash_file(args: argparse.Namespace) -> ChecksumHelperData:
     cshd = ChecksumHelperData(None, args.source_path)
     cshd.read()
     cshd.copy_to(args.dest_path)
@@ -1704,7 +1719,7 @@ if __name__ == "__main__":
                                   "be file paths!): e.g. C:\\test\\photos.sha512, C:\\test\\, "
                                   "../test/photos.sha512, .\\..\\test2\\")
     # set func to call when subcommand is used
-    copy_parser.set_defaults(func=_cl_copy)
+    copy_parser.set_defaults(func=_cl_copy_hash_file)
 
     move = subparsers.add_parser("move", aliases=["mv"], parents=[parent_parser],
                                  help="Move a (hash-)file/folder modifying the paths "
