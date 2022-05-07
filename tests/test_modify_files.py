@@ -41,8 +41,9 @@ HASH_FILES = ("tt.md5", "tt.sha256", "tt.sha512", os.path.join("sub3", "sub1", "
       ((os.path.join("sub1", "sub1", "tt_sub3_sub1.sha512"), "tt_sub3_sub1.sha512"),),
     ),
     # move dir that contains a hash file that would've been filtered out by depth limit
-    # -> make sure we still get the same results as move_sub3_sub4
-    (os.path.join("sub3"), "sub4", 1, None, "move_sub3_sub4",
+    # users can now supply a limited depth and confirm their choice on the cli otherwise
+    # we abort so this is a normal test case now
+    (os.path.join("sub3"), "sub4", -1, None, "move_sub3_sub4",
      (os.path.join("sub4", "sub3", "file1.txt"), os.path.join("sub4", "sub3", "sub1", "asflkjslekgglkds.jpg"),
       os.path.join("sub4", "sub3", "sub1", "file1.txt"), os.path.join("sub4", "sub3", "sub1", "new 67.txt"),
       os.path.join("sub4", "sub3", "sub1", "tt_sub3_sub1.sha512"), os.path.join("sub4", "sub3", "sub2", "file1.txt"),
@@ -119,7 +120,7 @@ HASH_FILES = ("tt.md5", "tt.sha256", "tt.sha512", os.path.join("sub3", "sub1", "
     ),
 ])
 def test_move_files(src, dst, depth, hash_fn_filter, expected_files_dirname, moved_paths, extra_cmp,
-                    setup_dir_to_checksum, caplog, monkeypatch):
+                    setup_dir_to_checksum, caplog):
     root_dir = setup_dir_to_checksum
 
     # abspath test windows only
@@ -195,26 +196,34 @@ def test_move_files(src, dst, depth, hash_fn_filter, expected_files_dirname, mov
 def mtime_ordered_hfiles(setup_tmpdir_param):
     tmpdir = setup_tmpdir_param
 
-    with open(os.path.join(tmpdir, "1.md5"), "w") as f:
+    hf1 = os.path.join(tmpdir, "1.md5")
+    with open(hf1, "w") as f:
         f.write("342452afbc534 *test.txt\n342452afbc534 *test2.txt\n342452afbc534 *test3.txt\n")
+    hf1_mtime = os.stat(hf1).st_mtime
     time.sleep(1)
 
     os.makedirs(os.path.join(tmpdir, "sub"))
-    with open(os.path.join(tmpdir, "sub", "2.cshd"), "w") as f:
+    hf2 = os.path.join(tmpdir, "sub", "2.cshd")
+    with open(hf2, "w") as f:
         f.write("1234124.5,md5,342452afbc534,test.txt\n1234124.5,md5,342452afbc534,test2.txt\n1234124.5,md5,342452afbc534,test3.txt\n")
+    hf2_mtime = os.stat(hf2).st_mtime
     time.sleep(1)
 
-    with open(os.path.join(tmpdir, "3.md5"), "w") as f:
+    hf3 = os.path.join(tmpdir, "3.md5")
+    with open(hf3, "w") as f:
         f.write("342452afbc534 *test.txt\n342452afbc534 *test2.txt\n342452afbc534 *test3.txt\n")
+    hf3_mtime = os.stat(hf3).st_mtime
 
-    return (tmpdir, ("1.md5", os.path.join("sub", "2.cshd"), "3.md5"))
+    return (tmpdir, (hf1, hf2, hf3),
+            [(os.path.basename(hf1), hf1_mtime), (os.path.basename(hf2), hf2_mtime),
+             (os.path.basename(hf3), hf3_mtime)])
 
-def test_move_preserves_mtime_ordering(mtime_ordered_hfiles, monkeypatch):
-    root, hfiles = mtime_ordered_hfiles
+def test_move_preserves_mtime(mtime_ordered_hfiles, monkeypatch):
+    root, hfiles, hf_mtimes = mtime_ordered_hfiles
 
     monkeypatch.setattr(checksum_helper, "cli_yes_no", lambda x: True)
 
-    src = os.path.join(root, hfiles[0])
+    src = hfiles[0]
     dst_dir = os.path.join(root, "moved")
     os.makedirs(dst_dir) # so shutil.move moves it inside instead of renaming to "moved"
 
@@ -223,12 +232,9 @@ def test_move_preserves_mtime_ordering(mtime_ordered_hfiles, monkeypatch):
 
     _cl_move(a)
 
-    hfiles_after_move = [os.path.join("moved", hfiles[0]), *hfiles[1:]]
-    hf_mtimes = []
-    for hf in hfiles_after_move:
-        stats = os.stat(os.path.join(root, hf))
-        hf_mtimes.append((os.path.basename(hf), stats.st_mtime))
+    hfiles_after_move = [os.path.join(root, "moved", os.path.basename(hfiles[0])), *hfiles[1:]]
+    hf_mtimes_after_move = [(os.path.basename(hf), os.stat(hf).st_mtime) for hf in hfiles_after_move]
 
-    # name order/order there were created in should match their order sorted by ascending mtime
-    assert sorted(hf_mtimes, key=lambda x: x[0]) == sorted(hf_mtimes, key=lambda x: x[1])
+    assert hf_mtimes == hf_mtimes_after_move
+
 

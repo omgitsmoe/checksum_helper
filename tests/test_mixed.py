@@ -1,6 +1,7 @@
 import os
 import shutil
 import logging
+import time
 import pytest
 
 from utils import TESTS_DIR, setup_tmpdir_param, Args
@@ -19,10 +20,14 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
 
     # set input to automatically answer with y so we write the file when asked
     monkeypatch.setattr('builtins.input', lambda x: "y")
-    a = Args(source_path=os.path.join(root_dir, "tt.sha512"),
+    f1 = os.path.join(root_dir, "tt.sha512")
+    a = Args(source_path=f1,
              dest_path=f".{os.sep}sub2{os.sep}tt_moved.sha512")
     hf = _cl_copy_hash_file(a)
-    assert os.path.isfile(os.path.join(root_dir, "sub2", "tt_moved.sha512"))
+    f1_moved = os.path.join(root_dir, "sub2", "tt_moved.sha512")
+    assert os.path.isfile(f1_moved)
+    # preserved mtime
+    assert os.stat(f1).st_mtime == os.stat(f1_moved).st_mtime
 
     with open(os.path.join(root_dir, "sub2", "tt_moved.sha512"), 'r', encoding='utf-8-sig') as f:
         moved = f.read()
@@ -30,16 +35,20 @@ def test_copyto(setup_tmpdir_param, monkeypatch, caplog) -> None:
             f"*sub2/", "*").replace("*sub1", f"*../sub1")
     assert expected == moved
 
-    a = Args(source_path=os.path.join(root_dir, "sub2", "tt_moved.sha512"),
+    f2 = f1_moved
+    a = Args(source_path=f2,
              dest_path=f"..{os.sep}sub1{os.sep}sub2{os.sep}tt_moved2.sha512")
     hf = _cl_copy_hash_file(a)
-    assert os.path.isfile(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"))
+    f2_moved = os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512")
+    assert os.path.isfile(f2_moved)
 
     with open(os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"), 'r', encoding='utf-8-sig') as f:
         moved = f.read()
     expected = orig.replace("*n", f"*../../n").replace(f"*sub2/", f"*../../sub2/").replace(
             f"*sub1/sub2/", "*").replace(f"*sub1/", f"*../")
     assert expected == moved
+    # preserved mtime
+    assert os.stat(f2).st_mtime == os.stat(f2_moved).st_mtime
 
     a = Args(source_path=os.path.join(root_dir, "sub1", "sub2", "tt_moved2.sha512"),
              dest_path=f"..{os.sep}.{os.sep}tt_moved3.sha512")
@@ -201,3 +210,44 @@ def test_warn_pardir(caplog):
                                              "to the path that is the most common denominator!"
                                              % os.path.join(root_dir, "warn.sha512")),
     ]
+
+
+def test_write_updates_mtime(setup_tmpdir_param, monkeypatch):
+    tmpdir = setup_tmpdir_param
+
+    fn = os.path.join(tmpdir, "test.cshd")
+    hf = ChecksumHelperData(ChecksumHelper(tmpdir), fn)
+    hashed = HashedFile(filename = os.path.join(tmpdir, "test.txt"), mtime = None, hash_type = "md5",
+                        hash_bytes = b"342432", text_mode = False)
+    hf.set_entry(hashed.filename, hashed)
+    hf.write()
+
+    assert hf.mtime is not None
+    old = hf.mtime
+
+    time.sleep(1)
+    hf.write(force=True)
+    assert hf.mtime > old
+
+
+@pytest.mark.parametrize(
+        "preserve", [True, False])
+def test_preserve_mtime(preserve, setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+
+    fn = os.path.join(tmpdir, "test.cshd")
+    hf = ChecksumHelperData(ChecksumHelper(tmpdir), fn)
+    hashed = HashedFile(filename = os.path.join(tmpdir, "test.txt"), mtime = None, hash_type = "md5",
+                        hash_bytes = b"342432", text_mode = False)
+    hf.set_entry(hashed.filename, hashed)
+    hf.write()
+    orig_mtime = os.stat(fn).st_mtime
+
+    time.sleep(1)
+    hf.write(force = True, preserve_mtime = preserve)
+    if preserve:
+        assert os.stat(fn).st_mtime == orig_mtime
+    else:
+        assert os.stat(fn).st_mtime > orig_mtime
+
+

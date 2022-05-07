@@ -71,7 +71,7 @@ def test_verify_cshd(caplog, capsys, verify_cshd_2failed_files):
     ])
 
     captured = capsys.readouterr()
-    assert captured.out == f'\nVerified hash files: {hfile_path}\n\nMISSING FILES:\n\n    ROOT FOLDER: D:\\SYNC\\coding\\checksum_helper\\tests\\test_verify_files\\tt\\\n    |--> sub2\\new_cshd_missing.txt\n\nFAILED CHECKSUMS:\n\n    ROOT FOLDER: D:\\SYNC\\coding\\checksum_helper\\tests\\test_verify_files\\tt\\\n    |--> OUTDATED HASH (file is newer): sub1\\new_cshd_3.txt\n    |--> CORRUPTED (same modification time): same_mtime_corrupt.txt\n    |--> OUTDATED HASH (file is older): older_mtime_fail.txt\n\nSUMMARY:\n    TOTAL FILES: 5\n    MATCHES: 1\n    FAILED CHECKSUMS: 3\n    MISSING: 1\n'
+    assert captured.out == f'\nVerified hash files: {hfile_path}\n\nMISSING FILES:\n\n    ROOT FOLDER: {test_verify_root}\\\n    |--> sub2\\new_cshd_missing.txt\n\nFAILED CHECKSUMS:\n\n    ROOT FOLDER: {test_verify_root}\\\n    |--> OUTDATED HASH (file is newer): sub1\\new_cshd_3.txt\n    |--> CORRUPTED (same modification time): same_mtime_corrupt.txt\n    |--> OUTDATED HASH (file is older): older_mtime_fail.txt\n\nSUMMARY:\n    TOTAL FILES: 5\n    MATCHES: 1\n    FAILED CHECKSUMS: 3\n    MISSING: 1\n'
 
 def test_verify_hfile(caplog):
     test_verify_root = os.path.join(TESTS_DIR, "test_verify_files", "tt")

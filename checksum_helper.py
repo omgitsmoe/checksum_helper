@@ -406,10 +406,6 @@ class ChecksumHelper:
                                          depth=self.options["discover_hash_files_depth"],
                                          exclude_pattern=self.hash_filename_filter)
         self.all_hash_files = [ChecksumHelperData(self, hfile_path) for hfile_path in hash_files]
-        # NOTE: we sort the found hash files by their mtime by default so we don't mess with the
-        # ordering when building the most current hashes while we move/copy files and have
-        # to fix and then re-write the hash files
-        self.sort_hash_files_by_mtime()
 
     def read_all_hash_files(self) -> None:
         if not self.all_hash_files:
@@ -424,6 +420,14 @@ class ChecksumHelper:
     def build_most_current(self) -> None:
         if not self.hash_files_initialized():
             self.read_all_hash_files()
+
+        # NOTE: it would be better to use creation times here, but there are really
+        # tracked (or are inaccessible) on UNIX systems; so we use the modtime
+        # and try to preserve it when moving/copying files
+        # -> can still lead to using older hashes when a user modifies a file on their own
+        # TODO add date to cshd files + add version number
+        # sort by ascending mtime so the newest entries get written last
+        self.sort_hash_files_by_mtime()
 
         all_single_hash = True
         hash_types: Set[str] = set()
@@ -748,7 +752,6 @@ class ChecksumHelper:
         # the ORDER of the hash files on disk so when doing a build_most_current
         # no outdated sha gets picked
         all_hash_files = self._sort_hash_files_by_mtime(all_hash_files)
-        # TODO test this ^
 
         (source_path, src_is_dir, dest_path, dest_exists,
             dest_is_dir, real_dest) = move_info(source_path, mv_path, root_dir=self.root_dir)
@@ -778,8 +781,6 @@ class ChecksumHelper:
             logger.error("Couldn't move file(s): %s", str(e))
             return None
 
-        # NOTE: all_hash_files is sorted by ascending mtime to preserve the order
-        # we also need to write ALL hash files to preserve the mtime ordering
         for chsd in all_hash_files:
             if src_is_dir:
                 moved_fn_hash_dict = {}
@@ -810,7 +811,9 @@ class ChecksumHelper:
                     chsd.relocate(chsd.get_path().replace(source_path, dest_path))
             elif not src_is_dir and chsd.get_path() == source_path:
                     chsd.relocate(dest_path)
-            chsd.write(force=True)
+
+            # presere modtime so we don't get outdated hashes when building most current
+            chsd.write(force=True, preserve_mtime=True)
 
 
 class ChecksumHelperData:
@@ -1081,7 +1084,7 @@ class ChecksumHelperData:
 
         return write_file
 
-    def write(self, force: bool = False) -> bool:
+    def write(self, force: bool = False, preserve_mtime = False) -> bool:
         if not self.entries:
             logger.info("There are no hashed file entries to write!")
             return False
@@ -1095,7 +1098,17 @@ class ChecksumHelperData:
         else:
             written = self._write_as_single_hash_file(force)
 
+
         if written:
+            # self.mtime should always be not None if we read this file from this disk
+            # update mtime if there wasn't one before
+            if preserve_mtime:
+                assert self.mtime is not None
+                # (access time, modtime)
+                os.utime(self.get_path(), (time.time(), cast(float, self.mtime)))
+            else:
+                self.mtime = HashedFile.fetch_mtime(self.get_path())
+
             logger.info("Wrote %s", self.get_path())
         return written
 
@@ -1227,7 +1240,8 @@ class ChecksumHelperData:
         new_hash_file_dir, new_filename = self.relocate(mv_path)
         written = False
         if new_hash_file_dir is not None:
-            written = self.write()
+            # preserve modtime since we ust mtime to find the most current hashes
+            written = self.write(preserve_mtime=True)
 
         if written:
             logger.info("Copied hash file to %s",
