@@ -206,13 +206,14 @@ def gen_hash_from_file(fname: str, hash_algo_str: str, _hex: bool=False) -> Unio
     hash_obj = hashlib.new(hash_algo_str)
     # open file in read-only byte-mode
     with open(fname, "rb") as f:
-        # only read in chunks of size 4096 bytes
-        chunk = f.read(4096)
+        # only read in chunks of 64 KiB (larger chunks better for big files,
+        # but going beyond 64k did not make much of a difference)
+        chunk = f.read(65536)
         while chunk:
             # update it with the data by calling update() on the object
             # as many times as you need to iteratively update the hash
             hash_obj.update(chunk)
-            chunk = f.read(4096)
+            chunk = f.read(65536)
         # using the lambda was slower (~30-40ms) for ~586 files
         # for chunk in iter(lambda: f.read(4096), b""):
 
@@ -1617,6 +1618,9 @@ class RollingFileHandler(RotatingFileHandler):
             self.stream = self._open()
 
 
+# TODO:
+# - resume interrupted incremental or verification process
+# - replace wildcard filters with glob or (optinal) regex
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Combine discovered checksum files into "
                                                  "one with the most current checksums or "
