@@ -783,17 +783,22 @@ class ChecksumHelper:
             return None
 
         for chsd in all_hash_files:
+            modified = False
             if src_is_dir:
                 moved_fn_hash_dict = {}
                 for fpath, hashed_file in chsd.entries.items():
+                    # NOTE: since we're using absolute paths we have to change
+                    # these even if the realtive paths don't change
                     if fpath.startswith(source_path):
                         # remove source_path from fpath and replace it with dest
                         moved = fpath.replace(source_path, dest_path)
                         moved_fn_hash_dict[moved] = hashed_file
+                        modified = True
                     else:
                         moved_fn_hash_dict[fpath] = hashed_file
-                # replace with new fn hash dict
-                chsd.entries = moved_fn_hash_dict
+                if modified:
+                    # replace with new fn hash dict
+                    chsd.entries = moved_fn_hash_dict
             else:
                 # save hash and del old path entry and replace it with new path
                 mb_hashed_file = chsd.get_entry(source_path)
@@ -804,17 +809,24 @@ class ChecksumHelper:
                     # even if file was moved INTO dir we can use dest_path without modification
                     # since shutil.move returned the direct path to the file it moved
                     chsd.set_entry(dest_path, mb_hashed_file)
+                    modified = True
 
             # check if hash_file was also moved
             if src_is_dir and chsd.get_path().startswith(source_path):
                 # we already got the path pointing directly to the moved file/dir from
                 # shutil.move even if the target was a dir
-                    chsd.relocate(chsd.get_path().replace(source_path, dest_path))
+                chsd.relocate(chsd.get_path().replace(source_path, dest_path))
+                # NOTE: technically this is superflous since we're using absolute paths and
+                # moving a hash file INSIDE some directory means we are always changing the
+                # contents of that hash file (even if the relative paths would remain the same)
+                modified = True
             elif not src_is_dir and chsd.get_path() == source_path:
-                    chsd.relocate(dest_path)
+                chsd.relocate(dest_path)
+                modified = True
 
-            # presere modtime so we don't get outdated hashes when building most current
-            chsd.write(force=True, preserve_mtime=True)
+            if modified:
+                # presere modtime so we don't get outdated hashes when building most current
+                chsd.write(force=True, preserve_mtime=True)
 
 
 class ChecksumHelperData:
