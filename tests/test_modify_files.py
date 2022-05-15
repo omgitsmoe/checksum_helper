@@ -205,7 +205,7 @@ def mtime_ordered_hfiles(setup_tmpdir_param):
     os.makedirs(os.path.join(tmpdir, "sub"))
     hf2 = os.path.join(tmpdir, "sub", "2.cshd")
     with open(hf2, "w") as f:
-        f.write("1234124.5,md5,342452afbc534,test.txt\n1234124.5,md5,342452afbc534,test2.txt\n1234124.5,md5,342452afbc534,test3.txt\n")
+        f.write("1234124.5,md5,342452afbc534 test.txt\n1234124.5,md5,342452afbc534 test2.txt\n1234124.5,md5,342452afbc534 test3.txt\n")
     hf2_mtime = os.stat(hf2).st_mtime
     time.sleep(1)
 

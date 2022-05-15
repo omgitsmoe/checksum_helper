@@ -16,7 +16,7 @@ from logging.handlers import RotatingFileHandler
 
 from typing import (
     Optional, List, Union, Sequence, Tuple, overload, Literal, Iterable, cast,
-    Dict, TypedDict, Set
+    Dict, TypedDict, Set, Iterator
 )
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -467,8 +467,55 @@ class ChecksumHelper:
 
         self.hash_file_most_current = most_current
 
+    def filtered_walk(self, start_path: str, root_only: bool = False,
+                      whitelist: Optional[List[str]] = None,
+                      blacklist: Optional[List[str]] = None) -> Iterator[str]:
+        # NOTE: either start_path equals self.root_dir (no path separator as ending character)
+        # or its a subpath or the path with a path separator at the end (starts with root_dir + sep)
+        if start_path != self.root_dir and not start_path.startswith(self.root_dir + os.sep):
+            # also checks for full path
+            logger.error("start_path has to be a full path that is a subpath of the current "
+                         "ChecksumHelper's root dir")
+            return None
+
+        if whitelist is not None and blacklist is not None:
+            logger.error("Can only use either a whitelist or blacklist - not both!")
+            return None
+
+        for dirpath, dirnames, fnames in os.walk(start_path):
+            # filter dirnames before traversing into them
+            dirnames[:] = [d for d in dirnames
+                           if descend_into(os.path.join(dirpath[len(self.root_dir) + 1:], d),
+                                           whitelist=whitelist, blacklist=blacklist)]
+
+            for fname in fnames:
+                file_path = os.path.join(dirpath, fname)
+
+                # replace works here for computing the relpath since all paths share
+                # self.root_dir (it's part of dirpath)
+                # rel_fpath = file_path[len(start_path) + 1:]
+                # + 1 for last os.sep
+                rel_from_root = file_path[len(self.root_dir) + 1:]
+                # exclude own logs
+                # TODO update to exclude logs based on command line argument
+                if fname == LOG_BASENAME or (
+                        fname.startswith(LOG_BASENAME + '.') and
+                        fname.split(LOG_BASENAME + '.', 1)[1].isdigit()):
+                    continue
+                # match white/blacklist against relative path starting from root dir
+                # so it behaves correctly for different start_paths and it's
+                # not confusing for the user
+                if not include_path(rel_from_root, whitelist, blacklist):
+                    continue
+
+                yield file_path
+
+            if root_only:
+                break
+
+
     def do_incremental_checksums(
-            self, algo_name, single_hash: bool = False, start_path: Optional[str] = None,
+            self, algo_name: str, single_hash: bool = False, start_path: Optional[str] = None,
             root_only: bool = False, whitelist: Optional[List[str]] = None,
             blacklist: Optional[List[str]] = None) -> Optional['ChecksumHelperData']:
         """
@@ -478,17 +525,18 @@ class ChecksumHelper:
         start_path: has to be a subpath of self.root_dir
         root_only:  only do incremental checksums for the files of the root/start_path only
         """
+        # NOTE: white/blacklist are mutually exclusive which is checked in filtered_walk
+        # but we do the duplicate check here as well so we can avoid the cost of
+        # running build_most_current
         if whitelist is not None and blacklist is not None:
             logger.error("Can only use either a whitelist or blacklist - not both!")
             return None
+
         if not self.hash_file_most_current:
             self.build_most_current()
 
         if start_path is None:
             start_path = self.root_dir
-        elif start_path and not start_path.startswith(self.root_dir + os.sep):
-            logger.error("start_path has to be a subpath of the current ChecksumHelper's root dir")
-            return None
 
         dir_name = os.path.basename(start_path)
         if single_hash:
@@ -500,47 +548,22 @@ class ChecksumHelper:
         skip_unchanged = self.options['incremental_skip_unchanged']
         collect_fstat = self.options['incremental_collect_fstat']
         last_report = time.time()
-        for dirpath, dirnames, fnames in os.walk(start_path):
-            # filter dirnames before traversing into them
-            dirnames[:] = [d for d in dirnames
-                           if descend_into(os.path.join(dirpath[len(self.root_dir) + 1:], d),
-                                           whitelist=whitelist, blacklist=blacklist)]
 
-            for fname in fnames:
-                file_path = os.path.join(dirpath, fname)
+        for file_path in self.filtered_walk(start_path, root_only,
+                                                whitelist=whitelist, blacklist=blacklist):
+            # status report every N seconds
+            if time.time() - last_report >= 30:
+                logger.info("STATUS: Checking file \"%s\"", file_path)
+                last_report = time.time()
 
-                # status report every N seconds
-                if time.time() - last_report >= 30:
-                    logger.info("STATUS: Checking file \"%s\"", file_path)
-                    last_report = time.time()
+            print(file_path)
+            include, hashed_file = self._build_verfiy_hash(file_path, algo_name,
+                    collect_fstat=collect_fstat, skip_unchanged=skip_unchanged,
+                    single_hash=single_hash)
+            if include:
+                incremental.set_entry(file_path, cast(HashedFile, hashed_file))
 
-                # replace works here for computing the relpath since all paths share
-                # self.root_dir (it's part of dirpath)
-                # rel_fpath = file_path[len(start_path) + 1:]
-                # + 1 for last os.sep
-                rel_from_root = file_path[len(self.root_dir) + 1:]
-                # exclude own logs
-                if fname == LOG_BASENAME or (
-                        fname.startswith(LOG_BASENAME + '.') and
-                        fname.split(LOG_BASENAME + '.', 1)[1].isdigit()):
-                    continue
-                # match white/blacklist against relative path starting from root dir
-                # so it behaves correctly for different start_paths and it's
-                # not confusing for the user
-                if not include_path(rel_from_root, whitelist, blacklist):
-                    continue
-
-                include, hashed_file = self._build_verfiy_hash(file_path, algo_name,
-                        collect_fstat=collect_fstat, skip_unchanged=skip_unchanged,
-                        single_hash=single_hash)
-                if include:
-                    incremental.set_entry(file_path, cast(HashedFile, hashed_file))
-
-            logger.infov("Finished hasing files in %s", dirpath)  # type: ignore
-            if root_only:
-                break
-
-        return incremental
+        return incremental if len(incremental.entries) > 0 else None
 
     def _build_verfiy_hash(
             self, file_path: str, algo_name: str, single_hash: bool = False,
@@ -637,6 +660,62 @@ class ChecksumHelper:
                 new = HashedFile(file_path, mtime, algo_name, cast(bytes, new_hash), False)
 
         return include, new
+
+    def gen_missing_checksums(
+            self, algo_name: str, single_hash: bool = False, start_path: Optional[str] = None,
+            whitelist: Optional[List[str]] = None,
+            blacklist: Optional[List[str]] = None) -> Optional['ChecksumHelperData']:
+        """
+        Creates checksums for all changed files (that dont match checksums in
+        hash_file_most_current)
+
+        start_path: has to be a subpath of self.root_dir
+        root_only:  only do incremental checksums for the files of the root/start_path only
+        """
+        # NOTE: white/blacklist are mutually exclusive which is checked in filtered_walk
+        # but we do the duplicate check here as well so we can avoid the cost of
+        # running build_most_current
+        if whitelist is not None and blacklist is not None:
+            logger.error("Can only use either a whitelist or blacklist - not both!")
+            return None
+
+        if not self.hash_file_most_current:
+            self.build_most_current()
+
+        if start_path is None:
+            start_path = self.root_dir
+
+        dir_name = os.path.basename(start_path)
+        if single_hash:
+            filename = os.path.join(start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.{algo_name}")
+        else:
+            filename = os.path.join(start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.cshd")
+        missing_cshd = ChecksumHelperData(self, filename)
+
+        collect_fstat = self.options['incremental_collect_fstat']
+        last_report = time.time()
+
+        for file_path in self.filtered_walk(start_path, whitelist=whitelist, blacklist=blacklist):
+            # status report every N seconds
+            if time.time() - last_report >= 30:
+                logger.info("STATUS: Checking file \"%s\"", file_path)
+                last_report = time.time()
+
+            # fpath is an absolute path
+            old = cast(ChecksumHelperData, self.hash_file_most_current).get_entry(file_path)
+            # only include files that don't have a checksum yet
+            if old is None:
+                new_hash = HashedFile.compute_file_hash(file_path, algo_name)
+                if new_hash is None:
+                    logger.warning("File '%s' will be skipped!", file_path)
+                    continue
+                new = HashedFile(file_path, None, algo_name, new_hash, False)
+                if collect_fstat:
+                    new.update_mtime()
+
+                missing_cshd.set_entry(file_path, cast(HashedFile, new))
+
+        return missing_cshd if len(missing_cshd.entries) > 0 else None
 
     def write_most_current(self, hash_algo: str) -> None:
         if not self.hash_file_most_current:
@@ -1455,6 +1534,20 @@ def _cl_incremental(args: argparse.Namespace):
             incremental.write()
 
 
+def _cl_gen_missing(args: argparse.Namespace):
+    c = ChecksumHelper(args.path,
+                       hash_filename_filter=args.hash_filename_filter)
+    c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
+    c.options['incremental_collect_fstat'] = not args.dont_collect_mtime
+
+    gen_missing = c.gen_missing_checksums(args.hash_algorithm, single_hash=args.single_hash,
+                                          whitelist=args.whitelist, blacklist=args.blacklist)
+    if gen_missing is not None:
+        if args.out_filename:
+            gen_missing.relocate(args.out_filename)
+        gen_missing.write()
+
+
 def _cl_build_most_current(args: argparse.Namespace) -> None:
     c = ChecksumHelper(args.path,
                        hash_filename_filter=args.hash_filename_filter)
@@ -1669,9 +1762,9 @@ if __name__ == "__main__":
     incremental = subparsers.add_parser("incremental", aliases=["inc"], parents=[parent_parser],
                                         help="Discover hash files in subdirectories and verify"
                                              " found hashes and creating new hashes for new "
-                                             "files! (So not truly incremental). ATTENTION: Only "
-                                             "__new__ hashes will be written to file use "
-                                             "--include-unchagned to write all hashes!",
+                                             "files! (So not truly incremental). ATTENTION: All "
+                                             "hashes will be written to file use "
+                                             "--dont-include-unchagned to only write __new__ hashes!",
                                         formatter_class=SmartFormatter)
     incremental.add_argument("path", type=str)
     incremental.add_argument("hash_algorithm", type=str)
@@ -1800,6 +1893,42 @@ if __name__ == "__main__":
                                     "verify: ? matches any one char, * matches 0 or more chars")
     verify_filter.set_defaults(func=_cl_verify_filter)
     # ------------ END OF VERIFY SUBPARSER ----------------
+
+    # ------------ MISSING SUBPARSER ----------------
+    gen_missing = subparsers.add_parser("gen_missing", parents=[parent_parser],
+                                        help="Discover hash files in subdirectories and "
+                                             "generate checksums for just the files that don't have "
+                                             "a checksum yet.",
+                                        formatter_class=SmartFormatter)
+    gen_missing.add_argument("path", type=str)
+    gen_missing.add_argument("hash_algorithm", type=str)
+    gen_missing.add_argument("-s", "--single-hash", action="store_true",
+                             help="Force files to be written as single hash (*.sha512, *.md5, etc.) files. "
+                                  "Does not support storing mtimes (default format is .cshd)!")
+    gen_missing.add_argument("--dont-collect-mtime", action="store_true",
+                             help="Don't collect the modification time of files that would be used "
+                                  "for the --skip-unchanged flag and for emitting warnings "
+                                  "if a file should not have changed when doing an incremental checksum")
+    gen_missing.add_argument("-o", "--out-filename", type=str,
+                             help="Default filename is the the name of the parent dir with "
+                                  "the date appended, by default a .cshd file is created. "
+                                  "Specify a filename having a hash type "
+                                  "(see hashlib.algorithms_available) as extension to have all "
+                                  "other hashes be re-hashed to this one!")
+    # only either white or blacklist can be used at the same time - not both
+    inc_wl_or_bl = gen_missing.add_mutually_exclusive_group()
+    inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
+                              help="R|Only file paths matching one of the wildcard patterns "
+                                   "will be hashed\n"
+                                   "* -> Matches 0 or more chars (including / and \\\n"
+                                   "? -> Matches any one character (including / and \\)\n",
+                                   type=str)
+    inc_wl_or_bl.add_argument("-bl", "--blacklist", nargs="+", metavar='PATTERN', default=None,
+                              help="Wildcard patterns matching file paths to exclude from hashing",
+                              type=str)
+    # set func to call when subcommand is used
+    gen_missing.set_defaults(func=_cl_gen_missing)
+    # ------------ END OF MISSING SUBPARSER ----------------
 
     args = parser.parse_args()
     if len(sys.argv) == 1:

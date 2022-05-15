@@ -126,3 +126,11 @@ def hash_contents(algorithm, contents_to_hash) -> str:
     hash_obj.update(contents_to_hash)
 
     return hash_obj.hexdigest()
+
+def cshd_strip_mtime(cshd_contents):
+    stripped = []
+    for ln in cshd_contents.splitlines():
+        mtime_end = ln.index(",")
+        stripped.append(ln[mtime_end + 1:])
+
+    return "\n".join(stripped)
