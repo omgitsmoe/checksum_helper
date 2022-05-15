@@ -107,7 +107,7 @@ def test_cl_incremental_most_current_cli(setup_dir_to_checksum_path_only, monkey
     a = Args(path=root_dir, hash_filename_filter=None, single_hash=True,
              discover_hash_files_depth=-1, most_current_hash_file=most_current_fn,
              hash_algorithm="sha512", whitelist=None, blacklist=["hf_most_current.sha512"],
-             per_directory=False,
+             per_directory=False, log=None,
              dont_include_unchanged=True, skip_unchanged = False,
              dont_collect_mtime=False, out_filename=None)
     _cl_incremental(a)
@@ -227,6 +227,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
     monkeypatch.setattr('builtins.input', lambda x: "y")
 
     a = Args(path=root_dir, hash_filename_filter=hash_fn_filter, single_hash=True,
+             most_current_hash_file=None, log=None,
              dont_include_unchanged=not include_unchanged, discover_hash_files_depth=depth,
              hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist,
              skip_unchanged=False, dont_collect_mtime=False)
@@ -259,8 +260,9 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
     shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "per_dir"),
                     os.path.join(root_dir, ""))
 
-    a = Args(path=root_dir, hash_filename_filter=None, single_hash=True,
+    a = Args(path=root_dir, hash_filename_filter=None, single_hash=True, most_current_hash_file=None,
              dont_include_unchanged=False, discover_hash_files_depth=-1,
+             log=os.path.join(root_dir, "chsmhlpr.log"),
              hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist,
              skip_unchanged=False, dont_collect_mtime=False)
     _cl_incremental(a)

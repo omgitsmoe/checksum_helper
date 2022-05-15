@@ -309,7 +309,7 @@ def test_gen_missing(setup_gen_missing):
 
     # single hash
     a = Args(path=tmpdir, hash_filename_filter=None, single_hash=True,
-             discover_hash_files_depth=-1,
+             discover_hash_files_depth=-1, log=None, most_current_hash_file=None,
              hash_algorithm="sha512", whitelist=None, blacklist=None,
              dont_collect_mtime=False, out_filename=None)
     _cl_gen_missing(a)
@@ -323,7 +323,7 @@ def test_gen_missing(setup_gen_missing):
         
     # cshd + hash file depth
     a = Args(path=tmpdir, hash_filename_filter=None, single_hash=False,
-             discover_hash_files_depth=1,
+             discover_hash_files_depth=1, log=None, most_current_hash_file=None,
              hash_algorithm="sha512", whitelist=None, blacklist=None,
              dont_collect_mtime=False, out_filename=None)
     _cl_gen_missing(a)
@@ -342,7 +342,7 @@ def test_gen_missing(setup_gen_missing):
 
     # cshd + hfFILTER + whitelist
     a = Args(path=tmpdir, hash_filename_filter=[f"sub1{os.sep}sub1-2*"], single_hash=False,
-             discover_hash_files_depth=-1,
+             discover_hash_files_depth=-1, log=None, most_current_hash_file=None,
              hash_algorithm="sha512", whitelist=[f"sub1{os.sep}*", "f1.txt"], blacklist=None,
              dont_collect_mtime=False, out_filename=None)
     _cl_gen_missing(a)
@@ -395,7 +395,7 @@ def test_gen_missing_with_most_current_cli(setup_gen_missing, monkeypatch):
 
     a = Args(path=tmpdir, hash_filename_filter=None, single_hash=True,
              discover_hash_files_depth=-1, most_current_hash_file=most_current_fn,
-             hash_algorithm="sha512", whitelist=None, blacklist=None,
+             hash_algorithm="sha512", whitelist=None, blacklist=None, log=None,
              dont_collect_mtime=False, out_filename=None)
     _cl_gen_missing(a)
 
@@ -404,3 +404,26 @@ def test_gen_missing_with_most_current_cli(setup_gen_missing, monkeypatch):
     with open(generated_filename, "r", encoding='utf-8-sig') as f:
         generated_contents = f.read()
         assert generated_contents == "".join(f"{hash} *{fn}\n" for hash, fn in all_missing_hash_fn)
+
+
+@pytest.mark.parametrize("log_base, logs",
+    [(("check.log"), ("check.log", "check.log.5")),
+     (os.path.join("sub1", "test"), (os.path.join("sub1", "test"), os.path.join("sub1", "test.013"))),
+     (os.path.join("sub1", "sub1-2", "log.log"),
+         (os.path.join("sub1", "sub1-2", "log.log"),
+          os.path.join("sub1", "sub1-2", "log.log.1")))])
+def test_filter_own_logs(log_base, logs, setup_gen_missing):
+    tmpdir, _ = setup_gen_missing
+
+    for fn in logs:
+        with open(os.path.join(tmpdir, fn), "w", encoding="utf-8") as f:
+            f.write("loglog")
+
+    ch = ChecksumHelper(tmpdir, log_path=os.path.join(tmpdir, log_base))
+    generated = [fn for fn in ch.filtered_walk(tmpdir) if any(log_fn in fn for log_fn in logs)]
+    assert not generated
+
+    # sanity check that filtered_walk yields the log files if we don't pass log_path
+    ch = ChecksumHelper(tmpdir)
+    generated = [fn for fn in ch.filtered_walk(tmpdir) if any(log_fn in fn for log_fn in logs)]
+    assert generated

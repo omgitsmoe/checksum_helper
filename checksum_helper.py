@@ -20,7 +20,6 @@ from typing import (
 )
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
-LOG_BASENAME = "chsmhlpr.log"
 
 LOG_LVL_VERBOSE = logging.INFO - 1
 LOG_LVL_EXTRAVERBOSE = logging.INFO - 2
@@ -366,8 +365,10 @@ CHOptions = TypedDict('CHOptions', {'include_unchanged_files_incremental': bool,
 class ChecksumHelper:
 
     hash_filename_filter: Sequence[str]
+    log_path: Optional[str]
 
-    def __init__(self, root_dir: str, hash_filename_filter: Optional[Union[str, Sequence[str]]]=None):
+    def __init__(self, root_dir: str, hash_filename_filter: Optional[Union[str, Sequence[str]]]=None,
+                 log_path: Optional[str] = None):
         self.root_dir: str = os.path.abspath(os.path.normpath(root_dir))
         self.root_dir_name: str = os.path.basename(self.root_dir)
 
@@ -376,6 +377,10 @@ class ChecksumHelper:
         # files that were found using discover_hash_files
         # -> also contains hashes for files that couldve been deleted
         self.hash_file_most_current: Optional["ChecksumHelperData"] = None
+        if log_path:
+            self.log_path = os.path.abspath(log_path)
+        else:
+            self.log_path = None
 
         # susbtrings that cant be in filename of hash file
         if hash_filename_filter is None:
@@ -397,7 +402,6 @@ class ChecksumHelper:
         self.options: CHOptions = {
             "include_unchanged_files_incremental": True,
             "discover_hash_files_depth": -1,
-            # TODO cl flags for these
             "incremental_skip_unchanged": False,
             "incremental_collect_fstat": True,
         }
@@ -501,11 +505,13 @@ class ChecksumHelper:
                 # + 1 for last os.sep
                 rel_from_root = file_path[len(self.root_dir) + 1:]
                 # exclude own logs
-                # TODO update to exclude logs based on command line argument
-                if fname == LOG_BASENAME or (
-                        fname.startswith(LOG_BASENAME + '.') and
-                        fname.split(LOG_BASENAME + '.', 1)[1].isdigit()):
-                    continue
+                # RollingFileHandler -> basepath.ext -> basepath.ext.1 -> basepath.ext.2 -> ...
+                if self.log_path:
+                    log_path_rolling_base = self.log_path + '.'
+                    if file_path == self.log_path or (
+                            file_path.startswith(log_path_rolling_base) and
+                            file_path[len(log_path_rolling_base):].isdigit()):
+                        continue
                 # match white/blacklist against relative path starting from root dir
                 # so it behaves correctly for different start_paths and it's
                 # not confusing for the user
@@ -1496,7 +1502,8 @@ def _cl_check_missing(args: argparse.Namespace) -> None:
 
 def _cl_incremental(args: argparse.Namespace):
     c = ChecksumHelper(args.path,
-                       hash_filename_filter=args.hash_filename_filter)
+                       hash_filename_filter=args.hash_filename_filter,
+                       log_path=args.log)
     c.options["include_unchanged_files_incremental"] = not args.dont_include_unchanged
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.options['incremental_skip_unchanged'] = args.skip_unchanged
@@ -1542,7 +1549,8 @@ def _cl_incremental(args: argparse.Namespace):
 
 def _cl_gen_missing(args: argparse.Namespace):
     c = ChecksumHelper(args.path,
-                       hash_filename_filter=args.hash_filename_filter)
+                       hash_filename_filter=args.hash_filename_filter,
+                       log_path=args.log)
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.options['incremental_collect_fstat'] = not args.dont_collect_mtime
 
@@ -1723,8 +1731,8 @@ class RollingFileHandler(RotatingFileHandler):
 
         # --modified part--
         self.last_backup_cnt += 1
-        nextName = (f"{self.absFileNameWithoutExtension}_"
-                    f"{self.last_backup_cnt}{'.' + self.extension if self.extension else ''}")
+        nextName = (f"{self.absFileNameWithoutExtension}"
+                    f"{'.' + self.extension if self.extension else ''}.{self.last_backup_cnt:03d}")
         self.rotate(self.baseFilename, nextName)
         # --modified part--
 
