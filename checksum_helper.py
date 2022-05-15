@@ -418,6 +418,10 @@ class ChecksumHelper:
         return True if self.all_hash_files and all(
                 hfile.entries for hfile in self.all_hash_files) else False
 
+    def most_current_from_file(self, filename: str) -> None:
+        self.hash_file_most_current = ChecksumHelperData(self, filename)
+        self.hash_file_most_current.read()
+
     def build_most_current(self) -> None:
         if not self.hash_files_initialized():
             self.read_all_hash_files()
@@ -512,7 +516,6 @@ class ChecksumHelper:
 
             if root_only:
                 break
-
 
     def do_incremental_checksums(
             self, algo_name: str, single_hash: bool = False, start_path: Optional[str] = None,
@@ -1499,6 +1502,9 @@ def _cl_incremental(args: argparse.Namespace):
     c.options['incremental_skip_unchanged'] = args.skip_unchanged
     c.options['incremental_collect_fstat'] = not args.dont_collect_mtime
 
+    if args.most_current_hash_file:
+        c.most_current_from_file(args.most_current_hash_file)
+
     if args.per_directory:
         incremental = c.do_incremental_checksums(
             args.hash_algorithm,
@@ -1539,6 +1545,9 @@ def _cl_gen_missing(args: argparse.Namespace):
                        hash_filename_filter=args.hash_filename_filter)
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.options['incremental_collect_fstat'] = not args.dont_collect_mtime
+
+    if args.most_current_hash_file:
+        c.most_current_from_file(args.most_current_hash_file)
 
     gen_missing = c.gen_missing_checksums(args.hash_algorithm, single_hash=args.single_hash,
                                           whitelist=args.whitelist, blacklist=args.blacklist)
@@ -1782,6 +1791,9 @@ if __name__ == "__main__":
                              help="Don't collect the modification time of files that would be used "
                                   "for the --skip-unchanged flag and for emitting warnings "
                                   "if a file should not have changed when doing an incremental checksum")
+    incremental.add_argument("--most-current-hash-file", type=str,
+                             help="__Skips__ collecting checksums from checksum files and uses the "
+                                  "supplied file as most current checksums!")
     incremental.add_argument("-o", "--out-filename", type=str,
                              help="Default filename is the the name of the parent dir with "
                                   "the date appended, by default a .cshd file is created. "
@@ -1909,6 +1921,9 @@ if __name__ == "__main__":
                              help="Don't collect the modification time of files that would be used "
                                   "for the --skip-unchanged flag and for emitting warnings "
                                   "if a file should not have changed when doing an incremental checksum")
+    gen_missing.add_argument("--most-current-hash-file", type=str,
+                             help="__Skips__ collecting checksums from checksum files and uses the "
+                                  "supplied file as most current checksums!")
     gen_missing.add_argument("-o", "--out-filename", type=str,
                              help="Default filename is the the name of the parent dir with "
                                   "the date appended, by default a .cshd file is created. "

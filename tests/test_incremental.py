@@ -60,6 +60,65 @@ def test_do_incremental(setup_dir_to_checksum):
     compare_lines_sorted(verified_sha_contents, generated_sha_contents)
 
 
+@pytest.fixture
+def setup_dir_to_checksum_path_only(setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+    root_dir = os.path.join(tmpdir, "tt")
+    # use "" as last join to make sure tmpdir_failed_md5 ends in os.sep so it gets treated as
+    # dir path and not as file path
+    # When using copytree, you need to ensure that src exists and dst does not exist.
+    # Even if the top level directory contains nothing, copytree won't work because it
+    # expects nothing to be at dst and will create the top level directory itself.
+    shutil.copytree(os.path.join(TESTS_DIR, "test_incremental_files", "tt"),
+                    os.path.join(root_dir, ""))
+
+    yield root_dir
+
+
+def test_cl_incremental_most_current_cli(setup_dir_to_checksum_path_only, monkeypatch):
+    # the path of the file can get passed as command line argument, then _cl_incremental
+    # should use that as hash_file_most_current instead of calling .build_most_current
+    root_dir = setup_dir_to_checksum_path_only
+
+    # make sure build_most_current isn't called
+    def abort(self):
+        assert False # build_most_current was called
+    monkeypatch.setattr('checksum_helper.ChecksumHelper.build_most_current', abort)
+
+    verified_sha_name = "tt_2018-04-22_inc.sha512"
+    verified_sha_contents = read_file(os.path.join(TESTS_DIR,
+                                                   "test_incremental_files",
+                                                   verified_sha_name))
+
+    # these lines should not show up in the generated checksum file since
+    # we set dont_include_unchanged=True
+    most_current_fn = os.path.join(root_dir, "hf_most_current.sha512")
+    most_current_contents = (
+        "f6c5600ed1dbdcfdf829081f5417dccbbd2b9288e0b427e65c8cf67e274b69009cd142475e15304f599f429f260a661b5df4de26746459a3cef7f32006e5d1c1 *new 2.txt\n"
+        "1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75 *sub1/new 2.txt\n"
+        "acc28db2beb7b42baa1cb0243d401ccb4e3fce44d7b02879a52799aadff541522d8822598b2fa664f9d5156c00c924805d75c3868bd56c2acb81d37e98e35adc *sub1/new 4.txt\n"
+        "5267768822ee624d48fce15ec5ca79cbd602cb7f4c2157a516556991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da *sub1/sub2/new 3.txt\n"
+        "29e7c6238e5f3fb427a3b83f4fa00152c7f1d7f099e9b953c63e85808d5d3ce01387ea9f0c4d105791fddc0b0bf38f5725c2b9080925230ee2d618b665287a25 *sub1/sub2/new 4.txt\n"
+    )
+
+    with open(most_current_fn, "w", encoding='utf-8-sig') as f:
+        f.write(most_current_contents)
+        
+    a = Args(path=root_dir, hash_filename_filter=None, single_hash=True,
+             discover_hash_files_depth=-1, most_current_hash_file=most_current_fn,
+             hash_algorithm="sha512", whitelist=None, blacklist=["hf_most_current.sha512"],
+             per_directory=False,
+             dont_include_unchanged=True, skip_unchanged = False,
+             dont_collect_mtime=False, out_filename=None)
+    _cl_incremental(a)
+
+    # find written sha (current date is appended)
+    generated_sha_name = f"tt_{time.strftime('%Y-%m-%d')}.sha512"
+    generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
+
+    compare_lines_sorted(verified_sha_contents, generated_sha_contents)
+
+
 @pytest.mark.parametrize("options, verified_cshd_name",
         [# below should include sub1\new 4.txt even though it didn't change and
          # include_unchanged is False since sub1\new 4.txt is from a .sha512 and

@@ -4,6 +4,8 @@ import logging
 import time
 import pytest
 
+import utils
+
 from utils import TESTS_DIR, setup_tmpdir_param, Args, cshd_strip_mtime
 
 from checksum_helper import (
@@ -355,3 +357,50 @@ def test_gen_missing(setup_gen_missing):
         generated_contents = f.read()
         assert cshd_strip_mtime(generated_contents) == (
                 "\n".join(f"sha512,{hash} {fn}" for hash, fn in all_missing_filter_wl))
+
+
+def test_gen_missing_with_most_current_cli(setup_gen_missing, monkeypatch):
+    # the path of the file can get passed as command line argument, then gen_missing
+    # should use that as hash_file_most_current instead of calling .build_most_current
+    tmpdir, filename_contents = setup_gen_missing
+
+    # make sure build_most_current isn't called
+    def abort(self):
+        assert False # build_most_current was called
+    monkeypatch.setattr('checksum_helper.ChecksumHelper.build_most_current', abort)
+
+    most_current_fn = os.path.join(tmpdir, "hf_most_current.sha512")
+    most_current_contents = (
+            "af2489 *.f2.iso\n"
+            "af2489 *f1.txt\n"
+            "af2389 *sub1/s1f1.doc\n"
+            "af2389 *sub1/sub1-1/s1-1f1.jpg\n"
+            "af2489 *sub1/sub1-2/s1-2f1.txt\n"
+            "af2389 *sub1/sub1-2/_i3ds kl#(.txt\n"
+            "af2389 *sub2/s2.f1.png\n")
+    with open(most_current_fn, "w", encoding='utf-8', newline='') as f:
+        f.write(most_current_contents)
+    most_current_hash = utils.hash_contents("sha512", most_current_contents.encode('utf-8'))
+
+    # gen_missing should only generate checksums for files that don't have a checksum
+    # in the intermediate ChecksumHelper.hash_file_most_current
+    all_missing_hash_fn = [
+            (most_current_hash, os.path.basename(most_current_fn)),
+            ("ff5d382cdadd261498682c590d3a6b42899f25d17b17d24799d045af84fb4370b521b70205b435adf5aaa70aafb7d78731659696ff247e06ef8a904f52d92085", "tmp.sha512"),
+            ("18afeea3939a238047bde021c536f4a38be24ca4aabcdbe57c9ff6748a03843224083e0955537ea560789ac7ffe97aa5706ab395b1a2c9afe6c12e3205b5b965", "sub1/s1f2.jpg"),
+            ("3191bd29e858ee5ef597d749dc3c7330cf1ff09f67be482a8542dc7533c6b2ff0d83a536a3e15dde84adfc1df70aec4c224f1e374639e51cf0200c0a156283ce", "sub1/sub1-1/s1-1fdgkf(#%.db"),
+            ("e57e68d272d55cd691cf328cc1789bbdf4711a3d208dd42408c0a0f7c73cd9f97e22026535be1d34343d2d078fdcb5ec1e5e721dd743459635cb76ce4208621b", "sub1/sub1-2/s1s1-2.cshd"),
+            ("a443e7b9b1d76ca9d1645f6ba64431d09d6e4385a51f25d2754ca034afb90e0ba00136a8c16f8fd8ccca033abc64fa0b411ddaf72099eee489409fe6f42dd20d", "sub2/s2 _()=f2"),
+    ]
+
+    a = Args(path=tmpdir, hash_filename_filter=None, single_hash=True,
+             discover_hash_files_depth=-1, most_current_hash_file=most_current_fn,
+             hash_algorithm="sha512", whitelist=None, blacklist=None,
+             dont_collect_mtime=False, out_filename=None)
+    _cl_gen_missing(a)
+
+    generated_filename = os.path.join(
+            tmpdir, f"{os.path.basename(tmpdir)}_missing_{time.strftime('%Y-%m-%d')}.sha512")
+    with open(generated_filename, "r", encoding='utf-8-sig') as f:
+        generated_contents = f.read()
+        assert generated_contents == "".join(f"{hash} *{fn}\n" for hash, fn in all_missing_hash_fn)
