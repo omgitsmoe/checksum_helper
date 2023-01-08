@@ -75,7 +75,8 @@ def setup_dir_to_checksum_path_only(setup_tmpdir_param):
     yield root_dir
 
 
-def test_cl_incremental_most_current_cli(setup_dir_to_checksum_path_only, monkeypatch):
+@pytest.mark.parametrize("only_missing", [False, True])
+def test_cl_incremental_most_current_cli(only_missing, setup_dir_to_checksum_path_only, monkeypatch):
     # the path of the file can get passed as command line argument, then _cl_incremental
     # should use that as hash_file_most_current instead of calling .build_most_current
     root_dir = setup_dir_to_checksum_path_only
@@ -89,17 +90,35 @@ def test_cl_incremental_most_current_cli(setup_dir_to_checksum_path_only, monkey
     verified_sha_contents = read_file(os.path.join(TESTS_DIR,
                                                    "test_incremental_files",
                                                    verified_sha_name))
+    if only_missing:
+        # remove files that already had a hash in most_current
+        remove = ["*new 2.txt", "*sub1/new 2.txt", "*sub1/new 4.txt",
+                  "*sub1/sub2/new 3.txt", "*sub1/sub2/new 4.txt"]
+        verified_sha_contents = "\n".join(l for l in verified_sha_contents.lstrip(u'\ufeff').splitlines()
+                                 if not any(l.endswith(p) for p in remove))
+    else:
+        # this file changed, so it should be included even with dont_include_unchanged
+        verified_sha_contents += "5267768822ee624d48fce15ec5ca79cbd602cb7f4c2157a516556991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da *sub1/sub2/new 3.txt\n"
 
     # these lines should not show up in the generated checksum file since
     # we set dont_include_unchanged=True
     most_current_fn = os.path.join(root_dir, "hf_most_current.sha512")
-    most_current_contents = (
-        "f6c5600ed1dbdcfdf829081f5417dccbbd2b9288e0b427e65c8cf67e274b69009cd142475e15304f599f429f260a661b5df4de26746459a3cef7f32006e5d1c1 *new 2.txt\n"
-        "1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75 *sub1/new 2.txt\n"
-        "acc28db2beb7b42baa1cb0243d401ccb4e3fce44d7b02879a52799aadff541522d8822598b2fa664f9d5156c00c924805d75c3868bd56c2acb81d37e98e35adc *sub1/new 4.txt\n"
-        "5267768822ee624d48fce15ec5ca79cbd602cb7f4c2157a516556991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da *sub1/sub2/new 3.txt\n"
-        "29e7c6238e5f3fb427a3b83f4fa00152c7f1d7f099e9b953c63e85808d5d3ce01387ea9f0c4d105791fddc0b0bf38f5725c2b9080925230ee2d618b665287a25 *sub1/sub2/new 4.txt\n"
-    )
+    if only_missing:
+        most_current_contents = (
+            "f6c5600ed1dbdcfdf829081f5417dccbbd2b9288e0b427e65c8cf67e274b69009cd142475e15304f599f429f260a661b5df4de26746459a3cef7f32006e5d1c1 *new 2.txt\n"
+            "1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75 *sub1/new 2.txt\n"
+            "acc28db2beb7b42baa1cb0243d401ccb4e3fce44d7b02879a52799aadff541522d8822598b2fa664f9d5156c00c924805d75c3868bd56c2acb81d37e98e35adc *sub1/new 4.txt\n"
+            "5267768822ee624d48fce15ec5ca79cbd602cb7f4c2157a516556991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da *sub1/sub2/new 3.txt\n"
+            "29e7c6238e5f3fb427a3b83f4fa00152c7f1d7f099e9b953c63e85808d5d3ce01387ea9f0c4d105791fddc0b0bf38f5725c2b9080925230ee2d618b665287a25 *sub1/sub2/new 4.txt\n"
+        )
+    else:
+        most_current_contents = (
+            "f6c5600ed1dbdcfdf829081f5417dccbbd2b9288e0b427e65c8cf67e274b69009cd142475e15304f599f429f260a661b5df4de26746459a3cef7f32006e5d1c1 *new 2.txt\n"
+            "1f40fc92da241694750979ee6cf582f2d5d7d28e18335de05abc54d0560e0f5302860c652bf08d560252aa5e74210546f369fbbbce8c12cfc7957b2652fe9a75 *sub1/new 2.txt\n"
+            "acc28db2beb7b42baa1cb0243d401ccb4e3fce44d7b02879a52799aadff541522d8822598b2fa664f9d5156c00c924805d75c3868bd56c2acb81d37e98e35adc *sub1/new 4.txt\n"
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffff6991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da *sub1/sub2/new 3.txt\n"
+            "29e7c6238e5f3fb427a3b83f4fa00152c7f1d7f099e9b953c63e85808d5d3ce01387ea9f0c4d105791fddc0b0bf38f5725c2b9080925230ee2d618b665287a25 *sub1/sub2/new 4.txt\n"
+        )
 
     with open(most_current_fn, "w", encoding='utf-8-sig') as f:
         f.write(most_current_contents)
@@ -109,7 +128,7 @@ def test_cl_incremental_most_current_cli(setup_dir_to_checksum_path_only, monkey
              hash_algorithm="sha512", whitelist=None, blacklist=["hf_most_current.sha512"],
              per_directory=False, log=None,
              dont_include_unchanged=True, skip_unchanged = False,
-             dont_collect_mtime=False, out_filename=None)
+             dont_collect_mtime=False, out_filename=None, only_missing=only_missing)
     _cl_incremental(a)
 
     # find written sha (current date is appended)
@@ -230,7 +249,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
              most_current_hash_file=None, log=None,
              dont_include_unchanged=not include_unchanged, discover_hash_files_depth=depth,
              hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist,
-             skip_unchanged=False, dont_collect_mtime=False)
+             skip_unchanged=False, dont_collect_mtime=False, only_missing=False)
     _cl_incremental(a)
     if whitelist is not None and blacklist is not None:
         assert caplog.record_tuples == [
@@ -264,7 +283,7 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
              dont_include_unchanged=False, discover_hash_files_depth=-1,
              log=os.path.join(root_dir, "chsmhlpr.log"),
              hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist,
-             skip_unchanged=False, dont_collect_mtime=False)
+             skip_unchanged=False, dont_collect_mtime=False, only_missing=False)
     _cl_incremental(a)
 
     expected_res = [

@@ -477,7 +477,12 @@ class ChecksumHelper:
 
     def filtered_walk(self, start_path: str, root_only: bool = False,
                       whitelist: Optional[List[str]] = None,
-                      blacklist: Optional[List[str]] = None) -> Iterator[str]:
+                      blacklist: Optional[List[str]] = None,
+                      file_list: Optional[List[str]] = None) -> Iterator[str]:
+        """
+        if file_list is not None -> will iter file_list instead
+        NOTE: assumes file_list paths are __absolute__   
+        """
         # NOTE: either start_path equals self.root_dir (no path separator as ending character)
         # or its a subpath or the path with a path separator at the end (starts with root_dir + sep)
         if start_path != self.root_dir and not start_path.startswith(self.root_dir + os.sep):
@@ -490,43 +495,55 @@ class ChecksumHelper:
             logger.error("Can only use either a whitelist or blacklist - not both!")
             return None
 
-        for dirpath, dirnames, fnames in os.walk(start_path):
-            # filter dirnames before traversing into them
-            dirnames[:] = [d for d in dirnames
-                           if descend_into(os.path.join(dirpath[len(self.root_dir) + 1:], d),
-                                           whitelist=whitelist, blacklist=blacklist)]
+        if file_list is None:
+            for dirpath, dirnames, fnames in os.walk(start_path):
+                # filter dirnames before traversing into them
+                dirnames[:] = [d for d in dirnames
+                               if descend_into(os.path.join(dirpath[len(self.root_dir) + 1:], d),
+                                               whitelist=whitelist, blacklist=blacklist)]
 
-            for fname in fnames:
-                file_path = os.path.join(dirpath, fname)
+                for fname in fnames:
+                    file_path = os.path.join(dirpath, fname)
 
-                # replace works here for computing the relpath since all paths share
-                # self.root_dir (it's part of dirpath)
-                # rel_fpath = file_path[len(start_path) + 1:]
-                # + 1 for last os.sep
-                rel_from_root = file_path[len(self.root_dir) + 1:]
-                # exclude own logs
-                # RollingFileHandler -> basepath.ext -> basepath.ext.1 -> basepath.ext.2 -> ...
-                if self.log_path:
-                    log_path_rolling_base = self.log_path + '.'
-                    if file_path == self.log_path or (
-                            file_path.startswith(log_path_rolling_base) and
-                            file_path[len(log_path_rolling_base):].isdigit()):
-                        continue
-                # match white/blacklist against relative path starting from root dir
-                # so it behaves correctly for different start_paths and it's
-                # not confusing for the user
-                if not include_path(rel_from_root, whitelist, blacklist):
-                    continue
+                    if self._include_path_helper(file_path, whitelist, blacklist):
+                        yield file_path
 
-                yield file_path
+                if root_only:
+                    break
+        else:
+            for file_path in file_list:
+                if self._include_path_helper(file_path, whitelist, blacklist):
+                    yield file_path
 
-            if root_only:
-                break
+    def _include_path_helper(self, file_path: str,
+                             whitelist: Optional[List[str]] = None,
+                             blacklist: Optional[List[str]] = None) -> bool:
+        # replace works here for computing the relpath since all paths share
+        # self.root_dir (it's part of dirpath)
+        # rel_fpath = file_path[len(start_path) + 1:]
+        # + 1 for last os.sep
+        rel_from_root = file_path[len(self.root_dir) + 1:]
+        # exclude own logs
+        # RollingFileHandler -> basepath.ext -> basepath.ext.1 -> basepath.ext.2 -> ...
+        if self.log_path:
+            log_path_rolling_base = self.log_path + '.'
+            if file_path == self.log_path or (
+                    file_path.startswith(log_path_rolling_base) and
+                    file_path[len(log_path_rolling_base):].isdigit()):
+                return False
+        # match white/blacklist against relative path starting from root dir
+        # so it behaves correctly for different start_paths and it's
+        # not confusing for the user
+        if not include_path(rel_from_root, whitelist, blacklist):
+            return False
+        
+        return True
 
     def do_incremental_checksums(
             self, algo_name: str, single_hash: bool = False, start_path: Optional[str] = None,
             root_only: bool = False, whitelist: Optional[List[str]] = None,
-            blacklist: Optional[List[str]] = None) -> Optional['ChecksumHelperData']:
+            blacklist: Optional[List[str]] = None,
+            only_missing: bool = False) -> Optional['ChecksumHelperData']:
         """
         Creates checksums for all changed files (that dont match checksums in
         hash_file_most_current)
@@ -558,14 +575,18 @@ class ChecksumHelper:
         collect_fstat = self.options['incremental_collect_fstat']
         last_report = time.time()
 
-        for file_path in self.filtered_walk(start_path, root_only,
-                                                whitelist=whitelist, blacklist=blacklist):
+        file_list: Optional[List[str]] = None
+        if only_missing:
+            file_list = self.check_missing_files()
+
+        for file_path in self.filtered_walk(
+                start_path, root_only, whitelist=whitelist, blacklist=blacklist,
+                file_list=file_list):
             # status report every N seconds
             if time.time() - last_report >= 30:
                 logger.info("STATUS: Checking file \"%s\"", file_path)
                 last_report = time.time()
 
-            print(file_path)
             include, hashed_file = self._build_verfiy_hash(file_path, algo_name,
                     collect_fstat=collect_fstat, skip_unchanged=skip_unchanged,
                     single_hash=single_hash)
@@ -738,7 +759,7 @@ class ChecksumHelper:
     def sort_hash_files_by_mtime(self) -> None:
         self.all_hash_files = ChecksumHelper._sort_hash_files_by_mtime(self.all_hash_files)
 
-    def check_missing_files(self) -> None:
+    def check_missing_files(self) -> List[str]:
         """
         Check if all files in subdirs of root_dir are represented in hash_file_most_current
         """
@@ -811,6 +832,8 @@ class ChecksumHelper:
             missing_format.extend((f"F    {os.path.relpath(fp, start=self.root_dir)}"
                                    for fp in sorted(missing_files)))
             print("\n".join(missing_format))
+
+        return list(missing_files)
 
     def move_files(self, source_path: str, mv_path: str) -> None:
         # error when trying to move to diff drive
@@ -1518,7 +1541,8 @@ def _cl_incremental(args: argparse.Namespace):
             single_hash=args.single_hash,
             root_only=True,
             whitelist=args.whitelist,
-            blacklist=args.blacklist)
+            blacklist=args.blacklist,
+            only_missing=args.only_missing)
         if incremental is not None:
             incremental.write()
 
@@ -1535,12 +1559,14 @@ def _cl_incremental(args: argparse.Namespace):
                 single_hash=args.single_hash,
                 start_path=os.path.abspath(os.path.join(args.path, dp)),
                 whitelist=args.whitelist,
-                blacklist=args.blacklist)
+                blacklist=args.blacklist,
+                only_missing=args.only_missing)
             if incremental is not None:
                 incremental.write()
     else:
         incremental = c.do_incremental_checksums(args.hash_algorithm, single_hash=args.single_hash,
-                                                 whitelist=args.whitelist, blacklist=args.blacklist)
+                                                 whitelist=args.whitelist, blacklist=args.blacklist,
+                                                 only_missing=args.only_missing)
         if incremental is not None:
             if args.out_filename:
                 incremental.relocate(args.out_filename)
@@ -1795,6 +1821,10 @@ if __name__ == "__main__":
                                   "modification time as the file on record! (There are ways that a "
                                   "file can change without the mtime changing and like this "
                                   "the source is not checked for corruption!)")
+    incremental.add_argument("--only-missing", action="store_true",
+                             help="Only generate checksums for files without one! WARNING: Does __not__ "
+                                  "check whether the checksums of files that __have a checksum__ "
+                                  "match and need updating!!!")
     incremental.add_argument("--dont-collect-mtime", action="store_true",
                              help="Don't collect the modification time of files that would be used "
                                   "for the --skip-unchanged flag and for emitting warnings "

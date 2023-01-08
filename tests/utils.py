@@ -117,8 +117,14 @@ def sort_hf_contents(cont):
 
 def compare_lines_sorted(a: str, b: str) -> None:
     # strip BOM \ufeff
-    assert sorted(ln for ln in a.strip('\ufeff').splitlines()) == sorted(
-            ln for ln in b.strip('\ufeff').splitlines())
+    
+    
+    for (line_a, line_b) in zip(sorted(ln for ln in a.strip('\ufeff').splitlines()),
+                 sorted(ln for ln in b.strip('\ufeff').splitlines())):
+        if line_a != line_b:
+            print("A:", line_a)
+            print("B:", line_b)
+            assert False
 
 def hash_contents(algorithm, contents_to_hash) -> str:
     # construct a hash object by calling the appropriate constructor function
