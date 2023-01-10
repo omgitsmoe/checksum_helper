@@ -1721,7 +1721,7 @@ def _cl_verify_filter(args: argparse.Namespace) -> None:
     # calculate total files since current_hf will have all the entries and not just
     # the filtered ones we're checking!
     files_total = len(crc_errors) + len(missing) + matches
-    logger.info("Verified files matching the following filter: %s", args.hash_filename_filter)
+    logger.info("Verified files matching the following filter(s): %s", "; ".join(args.filter))
     log_summary(
         files_total, [(args.root_dir, missing)], [(args.root_dir, crc_errors)])
 
