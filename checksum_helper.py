@@ -1637,8 +1637,8 @@ def _cl_verify_all(args: argparse.Namespace) -> Tuple[int, int, int, int]:
             cast(ChecksumHelperData,
                  c.hash_file_most_current).entries)
 
-    print("\nVerified folders: %s" % (", ".join(args.root_dir),))
-    _print_summary(files_total, all_missing, all_failed_checksums)
+    logger.info("Verified folders: %s", ", ".join(args.root_dir))
+    log_summary(files_total, all_missing, all_failed_checksums)
 
     nr_missing = sum(len(x[1]) for x in all_missing)
     nr_failed_checksums = sum(len(x[1]) for x in all_failed_checksums)
@@ -1659,46 +1659,54 @@ def _cl_verify_hfile(args: argparse.Namespace) -> Tuple[int, int, int, int]:
 
         files_total += len(cshd.entries)
 
-    print("\nVerified hash files: %s" % (", ".join(args.hash_file_name),))
-    _print_summary(files_total, all_missing, all_failed_checksums)
+    logger.info("Verified hash file(s): %s", ", ".join(args.hash_file_name))
+    log_summary(files_total, all_missing, all_failed_checksums)
 
     nr_missing = sum(len(x[1]) for x in all_missing)
     nr_failed_checksums = sum(len(x[1]) for x in all_failed_checksums)
     return files_total, files_total - nr_missing - nr_failed_checksums, nr_missing, nr_failed_checksums
 
 
-def _print_summary(files_total: int, missing: List[Tuple[str, List[str]]],
-                   failed_checksums: List[Tuple[str, List[Tuple[str, str]]]]):
+def _summary_lines(files_total: int, missing: List[Tuple[str, List[str]]],
+                   failed_checksums: List[Tuple[str, List[Tuple[str, str]]]]) -> Iterator[str]:
 
     nr_missing = sum(len(x[1]) for x in missing)
     nr_failed_checksums = sum(len(x[1]) for x in failed_checksums)
 
     if any(x[1] for x in missing):
-        print("\nMISSING FILES:")
+        yield "\nMISSING FILES:\n"
         for root, fnames in missing:
             if not fnames:
                 continue
-            print(f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> ", end="")
-            print(f"\n    |--> ".join(fnames))
+            yield f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> "
+            yield from "\n    |--> ".join(fnames)
     else:
-        print("\nNO MISSING FILES!")
+        yield "\n\nNO MISSING FILES!"
 
     if any(x[1] for x in failed_checksums):
-        print("\nFAILED CHECKSUMS:")
+        yield "\n\nFAILED CHECKSUMS:\n"
         for root, failure_type_fnames in failed_checksums:
             if not failure_type_fnames:
                 continue
-            print(f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> ", end="")
-            print(f"\n    |--> ".join(f"{failure_type}: {fname}"
+            yield f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> "
+            # failure_type is empty string if we didn't have an mtime available
+            yield from ( "\n    |--> ".join(f"{failure_type if failure_type else 'UNKNOWN'}: {fname}"
                   for failure_type, fname in failure_type_fnames))
     else:
-        print("\nNO FAILED CHECKSUMS!")
+        yield "\n\nNO FAILED CHECKSUMS!"
 
-    print("\nSUMMARY:")
-    print("    TOTAL FILES:", files_total)
-    print("    MATCHES:", files_total - nr_missing - nr_failed_checksums)
-    print("    FAILED CHECKSUMS:", nr_failed_checksums)
-    print("    MISSING:", nr_missing)
+    yield "\n\nSUMMARY:"
+    yield f"\n    TOTAL FILES: {files_total}"
+    yield f"\n    MATCHES: {files_total - nr_missing - nr_failed_checksums}"
+    yield f"\n    FAILED CHECKSUMS: {nr_failed_checksums}"
+    yield f"\n    MISSING: {nr_missing}"
+
+
+def log_summary(files_total: int, missing: List[Tuple[str, List[str]]],
+                failed_checksums: List[Tuple[str, List[Tuple[str, str]]]]):
+    log_level = (logging.WARNING if any(l for r, l in missing) or
+        any(l for r, l in failed_checksums) else logging.INFO)
+    logger.log(log_level, "%s", "".join(_summary_lines(files_total, missing, failed_checksums)))
 
 
 def _cl_verify_filter(args: argparse.Namespace) -> None:
@@ -1713,7 +1721,8 @@ def _cl_verify_filter(args: argparse.Namespace) -> None:
     # calculate total files since current_hf will have all the entries and not just
     # the filtered ones we're checking!
     files_total = len(crc_errors) + len(missing) + matches
-    _print_summary(
+    logger.info("Verified files matching the following filter: %s", args.hash_filename_filter)
+    log_summary(
         files_total, [(args.root_dir, missing)], [(args.root_dir, crc_errors)])
 
 
@@ -1797,7 +1806,7 @@ if __name__ == "__main__":
                                help="increase output verbosity")
     parent_parser.add_argument("--log", default=None, metavar="LOGPATH",
                                help="Write logs to [LOGPATH]")
-    parent_parser.add_argument("--log-level", default="info", metavar="LOGPATH",
+    parent_parser.add_argument("--log-level", default="info", metavar="LOGLEVEL",
                                # choices=("debug", "extraverbose", "verbose", "info", "warning", "error"),
                                help="Log levels (from most verbose to least verbose: debug, "
                                     "extraverbose, verbose, info, warning, error")
