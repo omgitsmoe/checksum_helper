@@ -1353,12 +1353,14 @@ class ChecksumHelperData:
         for file_path, hashed_file in self.entries.items():
             if hashed_file.hash_type != hash_type:
                 # verify stored hash using old algo still matches
-                new_hash = gen_hash_from_file(file_path, hashed_file.hash_type)
+                new_hash = HashedFile.compute_file_hash_ignore_missing(
+                    file_path, hashed_file.hash_type)
                 if new_hash != hashed_file.hash_bytes:
                     logger.warning("File %s doesnt match most current hash: %s!",
                                    file_path, hashed_file.hex_hash())
 
-                new_hash = gen_hash_from_file(file_path, hash_type)
+                new_hash = HashedFile.compute_file_hash_ignore_missing(
+                    file_path, hash_type)
                 hashed_file.hash_type = hash_type
                 hashed_file.hash_bytes = new_hash
 
@@ -1444,15 +1446,8 @@ class ChecksumHelperData:
                 if not any(wildcard_match(pattern, rel_fpath) for pattern in whitelist):
                     continue
 
-            try:
-                current: Optional[bytes] = gen_hash_from_file(
-                    fpath, hashed_file.hash_type)
-            except FileNotFoundError:
-                current = None
-            except PermissionError:
-                logger.warning(
-                    "Permission to open file '%s' was denied!", fpath)
-                current = None
+            current: Optional[bytes] = HashedFile.compute_file_hash_ignore_missing(
+                fpath, hashed_file.hash_type)
 
             if current is None:
                 missing.append(rel_fpath)
@@ -1555,18 +1550,29 @@ class HashedFile:
             self.mtime = mb_mtime
 
     @staticmethod
-    def compute_file_hash(filename: str, hash_type: str) -> Optional[bytes]:
+    def _compute_file_hash(filename: str, hash_type: str, log_missing: bool) -> Optional[bytes]:
+        result: Optional[bytes] = None
         try:
-            result: Optional[bytes] = gen_hash_from_file(filename, hash_type)
-        except FileNotFoundError:
-            logger.warning("Could not find file '%s' for hashing!", filename)
-            result = None
+            result = gen_hash_from_file(filename, hash_type)
         except PermissionError:
             logger.warning(
                 "Permission to open the file for hashing was denied: %s!", filename)
-            result = None
+        except FileNotFoundError:
+            if log_missing:
+                logger.warning(
+                    "Could not find file '%s' for hashing!", filename)
+        except OSError:
+            logger.warning("Could not open file '%s' for hashing!", filename)
 
         return result
+
+    @staticmethod
+    def compute_file_hash(filename: str, hash_type: str) -> Optional[bytes]:
+        return HashedFile._compute_file_hash(filename, hash_type, True)
+
+    @staticmethod
+    def compute_file_hash_ignore_missing(filename: str, hash_type: str) -> Optional[bytes]:
+        return HashedFile._compute_file_hash(filename, hash_type, False)
 
     def copy(self) -> 'HashedFile':
         return copy.copy(self)
