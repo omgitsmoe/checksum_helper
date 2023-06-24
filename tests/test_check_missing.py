@@ -8,9 +8,11 @@ from checksum_helper import ChecksumHelper
 def test_check_missing(capsys):
     root_dir = os.path.join(TESTS_DIR, "test_check_missing_files")
     # empty string at the end so 2nd param ends up as path/ or path\\ -> dir
-    shutil.copy2(os.path.join(root_dir, "missing.sha512"), os.path.join(root_dir, "tt", ""))
+    shutil.copy2(os.path.join(root_dir, "missing.sha512"),
+                 os.path.join(root_dir, "tt", ""))
 
-    checksum_hlpr = ChecksumHelper(os.path.join(root_dir, "tt"), hash_filename_filter=())
+    checksum_hlpr = ChecksumHelper(os.path.join(
+        root_dir, "tt"), hash_filename_filter=())
 
     # assert that last test didnt leave a compl.sha512 behind
     try:
@@ -32,8 +34,10 @@ def test_check_missing(capsys):
 
     os.remove(os.path.join(root_dir, "tt", "missing.sha512"))
 
-    shutil.copy2(os.path.join(root_dir, "compl.sha512"), os.path.join(root_dir, "tt", ""))
-    checksum_hlpr = ChecksumHelper(os.path.join(root_dir, "tt"), hash_filename_filter=())
+    shutil.copy2(os.path.join(root_dir, "compl.sha512"),
+                 os.path.join(root_dir, "tt", ""))
+    checksum_hlpr = ChecksumHelper(os.path.join(
+        root_dir, "tt"), hash_filename_filter=())
     checksum_hlpr.check_missing_files()
 
     # get stdout

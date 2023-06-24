@@ -31,13 +31,17 @@ logging.addLevelName(LOG_LVL_EXTRAVERBOSE, "INFOVV")
 def infov(self, message, *args, **kws) -> None:
     if self.isEnabledFor(LOG_LVL_VERBOSE):
         # Yes, logger takes its '*args' as 'args'.
-        self._log(LOG_LVL_VERBOSE, message, args, **kws) 
+        self._log(LOG_LVL_VERBOSE, message, args, **kws)
+
+
 logging.Logger.infov = infov  # type: ignore
 
 
 def infovv(self, message, *args, **kws) -> None:
     if self.isEnabledFor(LOG_LVL_EXTRAVERBOSE):
-        self._log(LOG_LVL_EXTRAVERBOSE, message, args, **kws) 
+        self._log(LOG_LVL_EXTRAVERBOSE, message, args, **kws)
+
+
 logging.Logger.infovv = infovv  # type: ignore
 
 logger = logging.getLogger("Checksum_Helper")
@@ -62,7 +66,8 @@ def cli_yes_no(question_str: str) -> bool:
         elif ans == "y":
             return True
         else:
-            ans = input(f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
+            ans = input(
+                f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
 
 
 def wildcard_match(pattern: str, text: str, partial_match: bool = False) -> bool:
@@ -133,7 +138,8 @@ def split_path(path_str: str) -> Tuple[Optional[List[str]], Optional[str]]:
         if c in sep:
             if not curr:
                 # two seps in a row
-                logger.warning("Error: Two following separators in path: %s", path_str)
+                logger.warning(
+                    "Error: Two following separators in path: %s", path_str)
                 return None, None
             result.append(curr)
             curr = ""
@@ -170,7 +176,8 @@ def move_fpath(abspath: str, mv_path: str) -> Optional[str]:
     else:
         curr_path, fname = split_path(abspath)
         if curr_path is None:
-            logger.warning("Source path '%s' was in the wrong format!", abspath)
+            logger.warning(
+                "Source path '%s' was in the wrong format!", abspath)
             return None
 
         for cd in mv_path_split:
@@ -196,11 +203,13 @@ def move_fpath(abspath: str, mv_path: str) -> Optional[str]:
 def gen_hash_from_file(fname: str, hash_algo_str: str,
                        _hex: Literal[False] = ...) -> bytes: ...
 
+
 @overload
 def gen_hash_from_file(fname: str, hash_algo_str: str,
                        _hex: Literal[True]) -> str: ...
 
-def gen_hash_from_file(fname: str, hash_algo_str: str, _hex: bool=False) -> Union[str, bytes]:
+
+def gen_hash_from_file(fname: str, hash_algo_str: str, _hex: bool = False) -> Union[str, bytes]:
     # construct a hash object by calling the appropriate constructor function
     hash_obj = hashlib.new(hash_algo_str)
     # open file in read-only byte-mode
@@ -242,7 +251,7 @@ DIR_START_STR_EXCLUDE = (".git",)
 
 
 def discover_hash_files(start_path: str, depth: int = 2,
-                        exclude_pattern: Optional[Sequence[str]]=None) -> List[str]:
+                        exclude_pattern: Optional[Sequence[str]] = None) -> List[str]:
     if exclude_pattern is None:
         exclude_pattern = ()
 
@@ -273,13 +282,14 @@ def discover_hash_files(start_path: str, depth: int = 2,
                 _, ext = fname.rsplit(".", 1)
                 # replace works here for computing the relpath since all paths share
                 # start_path (it's part of dirpath)
-                rel_fp = os.path.join(dirpath, fname).replace(start_path + os.sep, '', 1)
+                rel_fp = os.path.join(dirpath, fname).replace(
+                    start_path + os.sep, '', 1)
             except ValueError:
                 # no file extentsion
                 continue
             # no exclude patterns -> append files with supported hash file extensions
             # exclude patterns -> supported extension and not matching any of the exclude patterns
-            if ((not exclude_pattern and (ext in HASH_FILE_EXTENSIONS)) or 
+            if ((not exclude_pattern and (ext in HASH_FILE_EXTENSIONS)) or
                     (ext in HASH_FILE_EXTENSIONS and not any(
                         wildcard_match(pat, rel_fp) for pat in exclude_pattern))):
                 hashfiles.append(os.path.join(dirpath, fname))
@@ -287,8 +297,8 @@ def discover_hash_files(start_path: str, depth: int = 2,
     return hashfiles
 
 
-def descend_into(path: str, whitelist: Optional[List[str]]=None,
-                 blacklist: Optional[List[str]]=None) -> bool:
+def descend_into(path: str, whitelist: Optional[List[str]] = None,
+                 blacklist: Optional[List[str]] = None) -> bool:
     """
     Tests whether to descend into a directory based on its path
     expects that only one of white/blacklist is not None"""
@@ -309,8 +319,8 @@ def descend_into(path: str, whitelist: Optional[List[str]]=None,
     return descend
 
 
-def include_path(path: str, whitelist: Optional[List[str]]=None,
-                 blacklist: Optional[List[str]]=None) -> bool:
+def include_path(path: str, whitelist: Optional[List[str]] = None,
+                 blacklist: Optional[List[str]] = None) -> bool:
     """expects that only one of white/blacklist is not None"""
     include = True
     if whitelist and not any(wildcard_match(pat, path) for pat in whitelist):
@@ -349,25 +359,29 @@ def move_info(source_path: str, mv_path: str,
     # >>> os.path.normpath(os.path.join(r"N:\_archive\test", r"..\.\..\_archive"))
     # 'N:\\_archive'
     # may change the meaning of a path that contains symbolic links
-    dest_path = mv_path if os.path.isabs(mv_path) else os.path.join(root_dir, mv_path)
+    dest_path = mv_path if os.path.isabs(
+        mv_path) else os.path.join(root_dir, mv_path)
     dest_path = os.path.normpath(dest_path)
     dest_exists = os.path.exists(dest_path)
     dest_is_dir = False if not dest_exists else os.path.isdir(dest_path)
-    real_dest = os.path.join(dest_path, os.path.basename(source_path)) if dest_is_dir else dest_path
+    real_dest = os.path.join(dest_path, os.path.basename(
+        source_path)) if dest_is_dir else dest_path
 
     return source_path, src_is_dir, dest_path, dest_exists, dest_is_dir, real_dest
+
 
 CHOptions = TypedDict('CHOptions', {'include_unchanged_files_incremental': bool,
                                     'discover_hash_files_depth': int,
                                     'incremental_skip_unchanged': bool,
                                     'incremental_collect_fstat': bool})
 
+
 class ChecksumHelper:
 
     hash_filename_filter: Sequence[str]
     log_path: Optional[str]
 
-    def __init__(self, root_dir: str, hash_filename_filter: Optional[Union[str, Sequence[str]]]=None,
+    def __init__(self, root_dir: str, hash_filename_filter: Optional[Union[str, Sequence[str]]] = None,
                  log_path: Optional[str] = None):
         self.root_dir: str = os.path.abspath(os.path.normpath(root_dir))
         self.root_dir_name: str = os.path.basename(self.root_dir)
@@ -389,13 +403,15 @@ class ChecksumHelper:
             # ("md5") is NOT a tuple its a string ("md5",) IS a tuple (mind the comma!)
             if os.sep == "\\":
                 # so windows users can use both / and \
-                self.hash_filename_filter = (hash_filename_filter.replace(os.altsep, os.sep),)
+                self.hash_filename_filter = (
+                    hash_filename_filter.replace(os.altsep, os.sep),)
             else:
                 # unix doesnt have an os.altsep
                 self.hash_filename_filter = (hash_filename_filter,)
         else:
             if os.sep == "\\":
-                self.hash_filename_filter = tuple(s.replace(os.altsep, os.sep) for s in hash_filename_filter)
+                self.hash_filename_filter = tuple(
+                    s.replace(os.altsep, os.sep) for s in hash_filename_filter)
             else:
                 self.hash_filename_filter = hash_filename_filter
 
@@ -410,7 +426,8 @@ class ChecksumHelper:
         hash_files = discover_hash_files(self.root_dir,
                                          depth=self.options["discover_hash_files_depth"],
                                          exclude_pattern=self.hash_filename_filter)
-        self.all_hash_files = [ChecksumHelperData(self, hfile_path) for hfile_path in hash_files]
+        self.all_hash_files = [ChecksumHelperData(
+            self, hfile_path) for hfile_path in hash_files]
 
     def read_all_hash_files(self) -> None:
         if not self.all_hash_files:
@@ -420,7 +437,7 @@ class ChecksumHelper:
 
     def hash_files_initialized(self) -> bool:
         return True if self.all_hash_files and all(
-                hfile.entries for hfile in self.all_hash_files) else False
+            hfile.entries for hfile in self.all_hash_files) else False
 
     def most_current_from_file(self, filename: str) -> None:
         self.hash_file_most_current = ChecksumHelperData(self, filename)
@@ -460,12 +477,17 @@ class ChecksumHelper:
         most_current = ChecksumHelperData(self, filename)
         # update dict with dicts from hash files -> sorted
         # dicts with biggest mtime last(newest) -> most current
+        # @Bug TODO: Windows only -> if two hash files have an entry for the same file
+        # with the only exception that some of the letters differ in their capitalization
+        # => different entries in the CSHD, but same file being accessed on a Windows
+        # system
         for cshd in self.all_hash_files:
             for file_path, hashed_file in cshd.entries.items():
                 # since we add hashes from different files we have to combine the realtive
                 # path IN the hashfile with the path TO the hashfile
                 # to get a correct path
-                combined_path = os.path.normpath(os.path.join(cshd.root_dir, file_path))
+                combined_path = os.path.normpath(
+                    os.path.join(cshd.root_dir, file_path))
                 most_current.set_entry(
                     combined_path,
                     HashedFile(
@@ -492,7 +514,8 @@ class ChecksumHelper:
             return None
 
         if whitelist is not None and blacklist is not None:
-            logger.error("Can only use either a whitelist or blacklist - not both!")
+            logger.error(
+                "Can only use either a whitelist or blacklist - not both!")
             return None
 
         if file_list is None:
@@ -536,7 +559,7 @@ class ChecksumHelper:
         # not confusing for the user
         if not include_path(rel_from_root, whitelist, blacklist):
             return False
-        
+
         return True
 
     def do_incremental_checksums(
@@ -555,7 +578,8 @@ class ChecksumHelper:
         # but we do the duplicate check here as well so we can avoid the cost of
         # running build_most_current
         if whitelist is not None and blacklist is not None:
-            logger.error("Can only use either a whitelist or blacklist - not both!")
+            logger.error(
+                "Can only use either a whitelist or blacklist - not both!")
             return None
 
         if not self.hash_file_most_current:
@@ -566,9 +590,11 @@ class ChecksumHelper:
 
         dir_name = os.path.basename(start_path)
         if single_hash:
-            filename = os.path.join(start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.{algo_name}")
+            filename = os.path.join(
+                start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.{algo_name}")
         else:
-            filename = os.path.join(start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.cshd")
+            filename = os.path.join(
+                start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.cshd")
         incremental = ChecksumHelperData(self, filename)
 
         skip_unchanged = self.options['incremental_skip_unchanged']
@@ -588,8 +614,8 @@ class ChecksumHelper:
                 last_report = time.time()
 
             include, hashed_file = self._build_verfiy_hash(file_path, algo_name,
-                    collect_fstat=collect_fstat, skip_unchanged=skip_unchanged,
-                    single_hash=single_hash)
+                                                           collect_fstat=collect_fstat, skip_unchanged=skip_unchanged,
+                                                           single_hash=single_hash)
             if include:
                 incremental.set_entry(file_path, cast(HashedFile, hashed_file))
 
@@ -603,7 +629,8 @@ class ChecksumHelper:
         new: Optional['HashedFile'] = None
         include = False
         # fpath is an absolute path
-        old = cast(ChecksumHelperData, self.hash_file_most_current).get_entry(file_path)
+        old = cast(ChecksumHelperData,
+                   self.hash_file_most_current).get_entry(file_path)
         if old is None:
             new_hash = HashedFile.compute_file_hash(file_path, algo_name)
             if new_hash is None:
@@ -639,21 +666,24 @@ class ChecksumHelper:
                 include = self.options['include_unchanged_files_incremental']
                 skip = True
                 logger.infovv(  # type: ignore
-                        "Skipping generation of a hash for file '%s' since the mtime matches!",
-                        file_path)
+                    "Skipping generation of a hash for file '%s' since the mtime matches!",
+                    file_path)
 
             if not skip:
                 # when building incremental hashfile we have to use
                 # the hash type for which we have A HASH in most_current
                 # to find out if file changed -> changed -> use new hash type
-                current_hash = HashedFile.compute_file_hash(file_path, old.hash_type)
+                current_hash = HashedFile.compute_file_hash(
+                    file_path, old.hash_type)
                 if current_hash is None:
                     logger.warning("File '%s' will be skipped!", file_path)
                     return False, None
 
                 # assume that we will be able to compute hashes after computing new_hash
                 if current_hash == old.hash_bytes:
-                    logger.infovv("Old and new hashes match for file %s!", file_path)  # type: ignore
+                    # type: ignore
+                    logger.infovv(
+                        "Old and new hashes match for file %s!", file_path)
 
                     # include if we didn't have an mtime before ONLY if we don't want
                     # to force a single hash file
@@ -669,7 +699,8 @@ class ChecksumHelper:
                             "Unexpected change of file hash, when modification time is "
                             "the same for file: %s", file_path)
                     elif comp_mtime == 1 or comp_mtime is None:
-                        logger.info("File \"%s\" changed, a new hash was generated!", file_path)
+                        logger.info(
+                            "File \"%s\" changed, a new hash was generated!", file_path)
                     elif comp_mtime == -1:
                         logger.info("File hashes don't match with the file on disk being older "
                                     "than the recorded modfication time! The hash of the file "
@@ -687,7 +718,8 @@ class ChecksumHelper:
                 include = True
 
             if include and new is None:
-                new = HashedFile(file_path, mtime, algo_name, cast(bytes, new_hash), False)
+                new = HashedFile(file_path, mtime, algo_name,
+                                 cast(bytes, new_hash), False)
 
         return include, new
 
@@ -706,7 +738,8 @@ class ChecksumHelper:
         # but we do the duplicate check here as well so we can avoid the cost of
         # running build_most_current
         if whitelist is not None and blacklist is not None:
-            logger.error("Can only use either a whitelist or blacklist - not both!")
+            logger.error(
+                "Can only use either a whitelist or blacklist - not both!")
             return None
 
         if not self.hash_file_most_current:
@@ -717,9 +750,11 @@ class ChecksumHelper:
 
         dir_name = os.path.basename(start_path)
         if single_hash:
-            filename = os.path.join(start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.{algo_name}")
+            filename = os.path.join(
+                start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.{algo_name}")
         else:
-            filename = os.path.join(start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.cshd")
+            filename = os.path.join(
+                start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.cshd")
         missing_cshd = ChecksumHelperData(self, filename)
 
         collect_fstat = self.options['incremental_collect_fstat']
@@ -732,7 +767,8 @@ class ChecksumHelper:
                 last_report = time.time()
 
             # fpath is an absolute path
-            old = cast(ChecksumHelperData, self.hash_file_most_current).get_entry(file_path)
+            old = cast(ChecksumHelperData,
+                       self.hash_file_most_current).get_entry(file_path)
             # only include files that don't have a checksum yet
             if old is None:
                 new_hash = HashedFile.compute_file_hash(file_path, algo_name)
@@ -757,7 +793,8 @@ class ChecksumHelper:
         return sorted(hash_files, key=lambda x: cast(float, x.mtime))
 
     def sort_hash_files_by_mtime(self) -> None:
-        self.all_hash_files = ChecksumHelper._sort_hash_files_by_mtime(self.all_hash_files)
+        self.all_hash_files = ChecksumHelper._sort_hash_files_by_mtime(
+            self.all_hash_files)
 
     def check_missing_files(self) -> List[str]:
         """
@@ -952,7 +989,7 @@ class ChecksumHelperData:
         # from path in hash file
         # make sure we get an absolute path
         self.root_dir, self.filename = os.path.split(
-                os.path.normpath(os.path.abspath(path_to_hash_file)))
+            os.path.normpath(os.path.abspath(path_to_hash_file)))
         # filename -> 'HashedFile' (filename is an absolute and normalized path)
         self.entries: Dict[str, 'HashedFile'] = {}
         self.mtime: Optional[float] = None
@@ -960,7 +997,8 @@ class ChecksumHelperData:
         # whether only one type of hash alogrithm is used
         self.single_hash: bool = False if not ext or ext == ".cshd" else True
         # None if self.single_hash is False
-        self.hash_type: Optional[str] = self.filename.rsplit(".", 1)[1] if self.single_hash else None
+        self.hash_type: Optional[str] = self.filename.rsplit(
+            ".", 1)[1] if self.single_hash else None
 
     def __eq__(self, other):
         """
@@ -1042,7 +1080,8 @@ class ChecksumHelperData:
         try:
             self.mtime = os.stat(self.get_path()).st_mtime
         except (FileNotFoundError, PermissionError):
-            logger.error("Could not access/find hash file '%s'", self.get_path())
+            logger.error("Could not access/find hash file '%s'",
+                         self.get_path())
             return
 
         with open(self.get_path(), "r", encoding="UTF-8") as f:
@@ -1074,7 +1113,8 @@ class ChecksumHelperData:
             # alert on abspath in file; we use abspath internally but only write
             # relative paths to file
             if os.path.isabs(file_path):
-                logger.warning("Read failed! Found absolute path in hash file: %s", self.get_path())
+                logger.warning(
+                    "Read failed! Found absolute path in hash file: %s", self.get_path())
                 # even if drive letters match: drives could be from different computers
                 # or could have been remounted
                 return
@@ -1090,16 +1130,18 @@ class ChecksumHelperData:
             # since we use them as keys
             # also needed since we always use '/' as path sep when writing the file
             # but use os.sep while running (since unix can't deal with '\' as path sep)
-            abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
+            abs_normed_path = os.path.normpath(
+                os.path.join(self.root_dir, file_path))
             self.entries[abs_normed_path] = HashedFile(
-                    abs_normed_path, mtime, hash_type, binascii.a2b_hex(hash_str), False)
+                abs_normed_path, mtime, hash_type, binascii.a2b_hex(hash_str), False)
 
     def _read_from_single_hash_file(self) -> None:
         hash_type = self.hash_type
         try:
             self.mtime = os.stat(self.get_path()).st_mtime
         except (FileNotFoundError, PermissionError):
-            logger.error("Could not access/find hash file '%s'", self.get_path())
+            logger.error("Could not access/find hash file '%s'",
+                         self.get_path())
             return
 
         # first line had \ufeff which is the BOM for utf-8 with bom
@@ -1158,7 +1200,8 @@ class ChecksumHelperData:
             # alert on abspath in file; we use abspath internally but only write
             # relative paths to file
             if os.path.isabs(file_path):
-                logger.warning("Read failed! Found absolute path in hash file: %s", self.get_path())
+                logger.warning(
+                    "Read failed! Found absolute path in hash file: %s", self.get_path())
                 # even if drive letters match: drives could be from different computers
                 # or could have been remounted
                 return
@@ -1170,12 +1213,12 @@ class ChecksumHelperData:
                                    self.get_path())
                     warned_pardir_ref = True
 
-
             # use normpath here to ensure that paths get normalized
             # since we use them as keys
             # also needed since we always use '/' as path sep when writing the file
             # but use os.sep while running (since unix can't deal with '\' as path sep)
-            abs_normed_path = os.path.normpath(os.path.join(self.root_dir, file_path))
+            abs_normed_path = os.path.normpath(
+                os.path.join(self.root_dir, file_path))
 
             # non-hex in hash_str
             try:
@@ -1187,7 +1230,7 @@ class ChecksumHelperData:
                 return
 
             self.entries[abs_normed_path] = HashedFile(
-                    abs_normed_path, None, cast(str, hash_type), hash_bytes, text_mode)
+                abs_normed_path, None, cast(str, hash_type), hash_bytes, text_mode)
 
     def _check_write_file(self, force=False) -> bool:
         write_file = False
@@ -1208,7 +1251,7 @@ class ChecksumHelperData:
 
         return write_file
 
-    def write(self, force: bool = False, preserve_mtime = False) -> bool:
+    def write(self, force: bool = False, preserve_mtime=False) -> bool:
         if not self.entries:
             logger.info("There are no hashed file entries to write!")
             return False
@@ -1222,14 +1265,14 @@ class ChecksumHelperData:
         else:
             written = self._write_as_single_hash_file(force)
 
-
         if written:
             # self.mtime should always be not None if we read this file from this disk
             # update mtime if there wasn't one before
             if preserve_mtime:
                 assert self.mtime is not None
                 # (access time, modtime)
-                os.utime(self.get_path(), (time.time(), cast(float, self.mtime)))
+                os.utime(self.get_path(),
+                         (time.time(), cast(float, self.mtime)))
             else:
                 self.mtime = HashedFile.fetch_mtime(self.get_path())
 
@@ -1358,7 +1401,7 @@ class ChecksumHelperData:
         self.root_dir, self.filename = new_hash_file_dir, new_filename
 
         return new_hash_file_dir, new_filename
-    
+
     def copy_to(self, mv_path: str) -> None:
         bu_root, bu_fn = self.root_dir, self.filename
         new_hash_file_dir, new_filename = self.relocate(mv_path)
@@ -1383,7 +1426,7 @@ class ChecksumHelperData:
         self.entries = {fname: hash_str for fname, hash_str in self.entries.items()
                         if os.path.isfile(fname)}
 
-    def verify(self, whitelist: Optional[Sequence[str]]=None) -> Tuple[List[Tuple[str, str]], List[str], int]:
+    def verify(self, whitelist: Optional[Sequence[str]] = None) -> Tuple[List[Tuple[str, str]], List[str], int]:
         crc_errors: List[Tuple[str, str]] = []
         missing: List[str] = []
         matches = 0
@@ -1402,11 +1445,13 @@ class ChecksumHelperData:
                     continue
 
             try:
-                current: Optional[bytes] = gen_hash_from_file(fpath, hashed_file.hash_type)
+                current: Optional[bytes] = gen_hash_from_file(
+                    fpath, hashed_file.hash_type)
             except FileNotFoundError:
                 current = None
             except PermissionError:
-                logger.warning("Permission to open file '%s' was denied!", fpath)
+                logger.warning(
+                    "Permission to open file '%s' was denied!", fpath)
                 current = None
 
             if current is None:
@@ -1414,38 +1459,48 @@ class ChecksumHelperData:
                 logger.warning("%s: MISSING", rel_fpath)
             elif hashed_file.hash_bytes == current:
                 matches += 1
-                logger.info("%s: %s OK", rel_fpath, hashed_file.hash_type.upper())
+                logger.info("%s: %s OK", rel_fpath,
+                            hashed_file.hash_type.upper())
             else:
                 # give more information if we have mtime data
                 if hashed_file.mtime is not None:
-                    current_mtime = cast(float, hashed_file.fetch_mtime(hashed_file.filename))
+                    current_mtime = cast(
+                        float, hashed_file.fetch_mtime(hashed_file.filename))
                     if current_mtime > hashed_file.mtime:
                         logger.warning("%s: %s FAILED -> OUTDATED HASH (file is newer)",
                                        rel_fpath, hashed_file.hash_type.upper())
-                        crc_errors.append(("OUTDATED HASH (file is newer)", rel_fpath))
+                        crc_errors.append(
+                            ("OUTDATED HASH (file is newer)", rel_fpath))
                     elif current_mtime == hashed_file.mtime:
                         logger.error("%s: %s FAILED -> CORRUPTED (same modification time)",
                                      rel_fpath, hashed_file.hash_type.upper())
-                        crc_errors.append(("CORRUPTED (same modification time)", rel_fpath))
+                        crc_errors.append(
+                            ("CORRUPTED (same modification time)", rel_fpath))
                     else:
                         logger.warning("%s: %s FAILED -> OUTDATED HASH (file is older)",
                                        rel_fpath, hashed_file.hash_type.upper())
-                        crc_errors.append(("OUTDATED HASH (file is older)", rel_fpath))
+                        crc_errors.append(
+                            ("OUTDATED HASH (file is older)", rel_fpath))
                 else:
                     crc_errors.append(("", rel_fpath))
-                    logger.warning("%s: %s FAILED", rel_fpath, hashed_file.hash_type.upper())
+                    logger.warning("%s: %s FAILED", rel_fpath,
+                                   hashed_file.hash_type.upper())
 
         if matches and not crc_errors and not missing:
-            logger.info("%s: No missing files and all files matching their hashes", self.get_path())
+            logger.info(
+                "%s: No missing files and all files matching their hashes", self.get_path())
         else:
             if matches and not crc_errors:
-                logger.info("%s: All files matching their hashes!", self.get_path())
+                logger.info("%s: All files matching their hashes!",
+                            self.get_path())
             else:
-                logger.warning("%s: %d files with wrong CRCs!", self.get_path(), len(crc_errors))
+                logger.warning("%s: %d files with wrong CRCs!",
+                               self.get_path(), len(crc_errors))
             if not missing:
                 logger.info("%s: No missing files!", self.get_path())
             else:
-                logger.warning("%s: %d missing files!", self.get_path(), len(missing))
+                logger.warning("%s: %d missing files!",
+                               self.get_path(), len(missing))
         return crc_errors, missing, matches
 
 
@@ -1482,10 +1537,12 @@ class HashedFile:
         try:
             stat = os.stat(filename)
         except FileNotFoundError:
-            logger.warning("Could not find file '%s' for getting file stats!", filename)
+            logger.warning(
+                "Could not find file '%s' for getting file stats!", filename)
             result = None
         except PermissionError:
-            logger.warning("Permission to stat the file was denied: %s!", filename)
+            logger.warning(
+                "Permission to stat the file was denied: %s!", filename)
             result = None
         else:
             result = stat.st_mtime
@@ -1505,7 +1562,8 @@ class HashedFile:
             logger.warning("Could not find file '%s' for hashing!", filename)
             result = None
         except PermissionError:
-            logger.warning("Permission to open the file for hashing was denied: %s!", filename)
+            logger.warning(
+                "Permission to open the file for hashing was denied: %s!", filename)
             result = None
 
         return result
@@ -1603,7 +1661,8 @@ def _cl_build_most_current(args: argparse.Namespace) -> None:
             c.hash_file_most_current.relocate(args.out_filename)
         c.hash_file_most_current.write()
     else:
-        logger.error("Could not build most current hash file data for: %s", args.path)
+        logger.error(
+            "Could not build most current hash file data for: %s", args.path)
 
 
 def _cl_copy_hash_file(args: argparse.Namespace) -> ChecksumHelperData:
@@ -1614,7 +1673,8 @@ def _cl_copy_hash_file(args: argparse.Namespace) -> ChecksumHelperData:
 
 
 def _cl_move(args: argparse.Namespace) -> None:
-    c = ChecksumHelper(args.root_dir, hash_filename_filter=args.hash_filename_filter)
+    c = ChecksumHelper(
+        args.root_dir, hash_filename_filter=args.hash_filename_filter)
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.move_files(args.source_path, args.mv_path)
 
@@ -1625,7 +1685,8 @@ def _cl_verify_all(args: argparse.Namespace) -> Tuple[int, int, int, int]:
     all_failed_checksums = []
     # verify all found hashes of discovered hash files for all supplied paths
     for root_p in args.root_dir:
-        c = ChecksumHelper(root_p, hash_filename_filter=args.hash_filename_filter)
+        c = ChecksumHelper(
+            root_p, hash_filename_filter=args.hash_filename_filter)
         c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
         c.build_most_current()
         # hash_file_most_current can either be of type HashFile or MixedAlgoHashCollection
@@ -1690,8 +1751,8 @@ def _summary_lines(files_total: int, missing: List[Tuple[str, List[str]]],
                 continue
             yield f"\n    ROOT FOLDER: {root}{os.sep}\n    |--> "
             # failure_type is empty string if we didn't have an mtime available
-            yield from ( "\n    |--> ".join(f"{failure_type if failure_type else 'UNKNOWN'}: {fname}"
-                  for failure_type, fname in failure_type_fnames))
+            yield from ("\n    |--> ".join(f"{failure_type if failure_type else 'UNKNOWN'}: {fname}"
+                                           for failure_type, fname in failure_type_fnames))
     else:
         yield "\n\nNO FAILED CHECKSUMS!"
 
@@ -1705,23 +1766,27 @@ def _summary_lines(files_total: int, missing: List[Tuple[str, List[str]]],
 def log_summary(files_total: int, missing: List[Tuple[str, List[str]]],
                 failed_checksums: List[Tuple[str, List[Tuple[str, str]]]]):
     log_level = (logging.WARNING if any(l for r, l in missing) or
-        any(l for r, l in failed_checksums) else logging.INFO)
-    logger.log(log_level, "%s", "".join(_summary_lines(files_total, missing, failed_checksums)))
+                 any(l for r, l in failed_checksums) else logging.INFO)
+    logger.log(log_level, "%s", "".join(
+        _summary_lines(files_total, missing, failed_checksums)))
 
 
 def _cl_verify_filter(args: argparse.Namespace) -> None:
-    c = ChecksumHelper(args.root_dir, hash_filename_filter=args.hash_filename_filter)
+    c = ChecksumHelper(
+        args.root_dir, hash_filename_filter=args.hash_filename_filter)
     c.options["discover_hash_files_depth"] = args.discover_hash_files_depth
     c.build_most_current()
     # so windows users can use both /  and \ (unix doesn't have os.altsep)
-    filter_unified = [x.replace(os.altsep, os.sep) for x in args.filter] if os.sep == '\\' else args.filter
+    filter_unified = [x.replace(os.altsep, os.sep)
+                      for x in args.filter] if os.sep == '\\' else args.filter
     current_hf = cast(ChecksumHelperData, c.hash_file_most_current)
     crc_errors, missing, matches = current_hf.verify(whitelist=filter_unified)
 
     # calculate total files since current_hf will have all the entries and not just
     # the filtered ones we're checking!
     files_total = len(crc_errors) + len(missing) + matches
-    logger.info("Verified files matching the following filter(s): %s", "; ".join(args.filter))
+    logger.info("Verified files matching the following filter(s): %s",
+                "; ".join(args.filter))
     log_summary(
         files_total, [(args.root_dir, missing)], [(args.root_dir, crc_errors)])
 
@@ -1732,12 +1797,14 @@ class SmartFormatter(argparse.HelpFormatter):
 
     def _split_lines(self, text: str, width: int) -> List[str]:
         if text.startswith('R|'):
-            return text[2:].splitlines()  
+            return text[2:].splitlines()
         # this is the RawTextHelpFormatter._split_lines
         return argparse.HelpFormatter._split_lines(self, text, width)
 
 # adapted from src: https://stackoverflow.com/questions/40150821/in-the-logging-modules-rotatingfilehandler-how-to-set-the-backupcount-to-a-pra
 # by Asiel Diaz Benitez modified by SBK
+
+
 class RollingFileHandler(RotatingFileHandler):
 
     extension: str
@@ -1752,7 +1819,8 @@ class RollingFileHandler(RotatingFileHandler):
                                                  encoding=encoding,
                                                  delay=delay)
         try:
-            self.absFileNameWithoutExtension, self.extension = self.baseFilename.rsplit(".", 1)
+            self.absFileNameWithoutExtension, self.extension = self.baseFilename.rsplit(
+                ".", 1)
         except ValueError:
             # no extension
             self.absFileNameWithoutExtension = self.baseFilename
@@ -1997,11 +2065,11 @@ if __name__ == "__main__":
         # default to stdout, but stderr would be better (use sys.stderr, then exit(1))
         parser.print_help()
         sys.exit(0)
-    
+
     if args.log is not None:
         handler = RollingFileHandler(
             args.log,
-            maxBytes=10485760, # 10MiB
+            maxBytes=10485760,  # 10MiB
             encoding="UTF-8")
 
         log_level_str = args.log_level.strip().lower()
@@ -2015,7 +2083,8 @@ if __name__ == "__main__":
         elif log_level_str == "error":
             log_level = logging.ERROR
         else:
-            print(f"Log level \"{log_level_str}\" not recognized, using default log level \"info\"")
+            print(
+                f"Log level \"{log_level_str}\" not recognized, using default log level \"info\"")
             log_level = logging.DEBUG
 
         handler.setLevel(log_level)
@@ -2039,8 +2108,7 @@ if __name__ == "__main__":
         # NOTE: warn after (potentially) installing the file handler
         logger.info("Pipe detected: Older PowerShell versions might need to manually set the encoding "
                     "to UTF-8 to get proper output!")
-        sys.stdout.reconfigure(encoding="utf-8") # >=py3.7
-
+        sys.stdout.reconfigure(encoding="utf-8")  # >=py3.7
 
     if args.verbosity == 1:
         stdohandler.setLevel(LOG_LVL_VERBOSE)
@@ -2053,5 +2121,5 @@ if __name__ == "__main__":
                           if args.whitelist else None)
         args.blacklist = ([pat.replace(os.altsep, os.sep) for pat in args.blacklist]
                           if args.blacklist else None)
-    
+
     args.func(args)
