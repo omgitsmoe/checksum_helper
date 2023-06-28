@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "checksum-helper"
+version = "0.2.1"
+authors = [
+  { name="omgitsmoe", email="60219950+omgitsmoe@users.noreply.github.com" },
+]
+description = "Helper tool for checksum file operations"
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+keywords = ["script", "checksum", "verify", "sha512", "md5", "sha256", "backup", "archival", "bit-rot"]
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/omgitsmoe/checksum_helper"
+"Bug Tracker" = "https://github.com/omgitsmoe/checksum_helper/issues"
+
+[project.scripts]
+checksum_helper = "checksum_helper.checksum_helper:main"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.2,<8"
+]
+
+[tool.setuptools.package-data]
+"checksum_helper" = ["py.typed"]

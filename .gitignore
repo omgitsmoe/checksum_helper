@@ -44,6 +44,7 @@
 !MANIFEST.in
 !requirements.txt
 !setup.cfg
+!pyproject.toml
 !*.spec
 !*.bat
 
