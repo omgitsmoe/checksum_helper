@@ -1852,7 +1852,7 @@ class RollingFileHandler(RotatingFileHandler):
 # TODO:
 # - resume interrupted incremental or verification process
 # - replace wildcard filters with glob or (optinal) regex
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Combine discovered checksum files into "
                                                  "one with the most current checksums or "
                                                  "build a new incremental checksum file "
@@ -2129,3 +2129,7 @@ if __name__ == "__main__":
                           if args.blacklist else None)
 
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()

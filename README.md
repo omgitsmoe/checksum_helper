@@ -1,4 +1,5 @@
-# ChecksumHelper
+# checksum-helper
+
 Convenient tool that facilitates a lot of common checksum file operations.
 
 Features:
