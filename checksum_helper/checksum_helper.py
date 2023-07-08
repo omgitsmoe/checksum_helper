@@ -44,18 +44,8 @@ def infovv(self, message, *args, **kws) -> None:
 
 logging.Logger.infovv = infovv  # type: ignore
 
-logger = logging.getLogger("Checksum_Helper")
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-# create streamhandler
-stdohandler = logging.StreamHandler(sys.stdout)
-stdohandler.setLevel(logging.INFO)
-
-# create a logging format
-formatterstdo = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(message)s", "%H:%M:%S")
-stdohandler.setFormatter(formatterstdo)
-logger.addHandler(stdohandler)
 
 
 def cli_yes_no(question_str: str) -> bool:
@@ -382,6 +372,7 @@ class ChecksumHelper:
     log_path: Optional[str]
 
     def __init__(self, root_dir: str, hash_filename_filter: Optional[Union[str, Sequence[str]]] = None,
+                 # just used for excluding own logs
                  log_path: Optional[str] = None):
         self.root_dir: str = os.path.abspath(os.path.normpath(root_dir))
         self.root_dir_name: str = os.path.basename(self.root_dir)
@@ -2071,6 +2062,16 @@ def main():
         # default to stdout, but stderr would be better (use sys.stderr, then exit(1))
         parser.print_help()
         sys.exit(0)
+
+    # create streamhandler
+    stdohandler = logging.StreamHandler(sys.stdout)
+    stdohandler.setLevel(logging.INFO)
+
+    # create a logging format
+    formatterstdo = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(message)s", "%H:%M:%S")
+    stdohandler.setFormatter(formatterstdo)
+    logger.addHandler(stdohandler)
 
     if args.log is not None:
         handler = RollingFileHandler(
