@@ -509,11 +509,14 @@ class ChecksumHelper:
                 "Can only use either a whitelist or blacklist - not both!")
             return None
 
+        relative_start_idx = len(self.root_dir) + \
+            (1 if not self.root_dir.endswith(os.sep) else 0)
+        # TODO add test for different paths
         if file_list is None:
             for dirpath, dirnames, fnames in os.walk(start_path):
                 # filter dirnames before traversing into them
                 dirnames[:] = [d for d in dirnames
-                               if descend_into(os.path.join(dirpath[len(self.root_dir) + 1:], d),
+                               if descend_into(os.path.join(dirpath[relative_start_idx:], d),
                                                whitelist=whitelist, blacklist=blacklist)]
 
                 for fname in fnames:
@@ -536,7 +539,10 @@ class ChecksumHelper:
         # self.root_dir (it's part of dirpath)
         # rel_fpath = file_path[len(start_path) + 1:]
         # + 1 for last os.sep
-        rel_from_root = file_path[len(self.root_dir) + 1:]
+        # TODO add test for different paths
+        relative_start_idx = len(self.root_dir) + \
+            (1 if not self.root_dir.endswith(os.sep) else 0)
+        rel_from_root = file_path[len(self.root_dir) + relative_start_idx:]
         # exclude own logs
         # RollingFileHandler -> basepath.ext -> basepath.ext.1 -> basepath.ext.2 -> ...
         if self.log_path:
