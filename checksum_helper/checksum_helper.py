@@ -16,7 +16,7 @@ from logging.handlers import RotatingFileHandler
 
 from typing import (
     Optional, List, Union, Sequence, Tuple, overload, Literal, Iterable, cast,
-    Dict, TypedDict, Set, Iterator
+    Dict, TypedDict, Set, Iterator, Final
 )
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -563,13 +563,17 @@ class ChecksumHelper:
             self, algo_name: str, single_hash: bool = False, start_path: Optional[str] = None,
             root_only: bool = False, whitelist: Optional[List[str]] = None,
             blacklist: Optional[List[str]] = None,
-            only_missing: bool = False) -> Optional['ChecksumHelperData']:
+            only_missing: bool = False,
+            incremental_writes: bool = False) -> Optional['ChecksumHelperData']:
         """
         Creates checksums for all changed files (that dont match checksums in
         hash_file_most_current)
 
         start_path: has to be a subpath of self.root_dir
         root_only:  only do incremental checksums for the files of the root/start_path only
+        only_missing: only include hashes for files that don't have one yet
+        incremental_writes: flush the state of the incremental hash file to
+                            disk periodically
         """
         # NOTE: white/blacklist are mutually exclusive which is checked in filtered_walk
         # but we do the duplicate check here as well so we can avoid the cost of
@@ -592,7 +596,12 @@ class ChecksumHelper:
         else:
             filename = os.path.join(
                 start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.cshd")
-        incremental = ChecksumHelperData(self, filename)
+
+        incremental: ChecksumHelperData
+        if incremental_writes:
+            incremental = ChecksumHelperDataIncremental(self, filename)
+        else:
+            incremental = ChecksumHelperData(self, filename)
 
         skip_unchanged = self.options['incremental_skip_unchanged']
         collect_fstat = self.options['incremental_collect_fstat']
@@ -615,6 +624,11 @@ class ChecksumHelper:
                                                            single_hash=single_hash)
             if include:
                 incremental.set_entry(file_path, cast(HashedFile, hashed_file))
+                if incremental_writes:
+                    incremental.write()
+
+        if incremental_writes:
+            cast(ChecksumHelperDataIncremental, incremental).write(flush=True)
 
         return incremental if len(incremental.entries) > 0 else None
 
@@ -655,6 +669,9 @@ class ChecksumHelper:
                               1 if cast(float, mtime) > cast(float, old.mtime) else -1)
 
             # we already compared the mtime so now we can update the mtime on old
+            # NOTE: not used! we just use mtime below, otherwise mtime would
+            #       not be updated
+            # TODO remove?
             if not old_has_mtime and mtime is not None:
                 old.mtime = mtime
 
@@ -1248,91 +1265,83 @@ class ChecksumHelperData:
 
         return write_file
 
+    @staticmethod
+    def _normalized_path(path: str) -> str:
+        # NOTE: always use '/' as path sep when writing the file
+        # but use os.sep while running (since unix can't deal with '\' as path sep)
+        if os.sep == '\\':
+            path = path.replace(os.sep, '/')
+        return path
+
+    def _restore_mtime(self) -> None:
+        assert self.mtime is not None
+        # (access time, modtime)
+        os.utime(self.get_path(),
+                 (time.time(), cast(float, self.mtime)))
+
     def write(self, force: bool = False, preserve_mtime=False) -> bool:
         if not self.entries:
             logger.info("There are no hashed file entries to write!")
             return False
 
-        fn, ext = os.path.splitext(self.filename)
-        if ext == ".cshd":
-            written = self._write(force)
-        elif not ext or not self.single_hash:
-            self.filename = f"{fn}.cshd"
-            written = self._write(force)
-        else:
-            written = self._write_as_single_hash_file(force)
-
-        if written:
-            # self.mtime should always be not None if we read this file from this disk
-            # update mtime if there wasn't one before
-            if preserve_mtime:
-                assert self.mtime is not None
-                # (access time, modtime)
-                os.utime(self.get_path(),
-                         (time.time(), cast(float, self.mtime)))
-            else:
-                self.mtime = HashedFile.fetch_mtime(self.get_path())
-
-            logger.info("Wrote %s", self.get_path())
-        return written
-
-    def _write(self, force=False) -> bool:
         write_file = self._check_write_file(force)
         if not write_file:
             return False
 
+        # older version of TotalCommander need UTF-8 BOM for checksum files so use UTF-8-SIG
+        encoding = "UTF-8-SIG" if self.single_hash else "UTF-8"
+        if self.single_hash:
+            serialized = self._as_single_hash_str()
+        else:
+            serialized = self._as_multihash_str()
+
+        # we want universal newlines mode disabled here (translates \n to
+        # platform default; it's fine for reading since everything ends
+        # up as \n)
+        with open(self.get_path(), "w", encoding=encoding, newline='') as w:
+            w.write(serialized)
+
+        # self.mtime should always be not None if we read this file from this disk
+        # update mtime if there wasn't one before
+        if preserve_mtime:
+            self._restore_mtime()
+        else:
+            self.mtime = HashedFile.fetch_mtime(self.get_path())
+
+        logger.info("Wrote %s", self.get_path())
+        return True
+
+    def _as_multihash_str(self) -> str:
         root_dir = self.root_dir
         lines = []
         for file_path, hashed_file in self.entries.items():
-            rel_file_path = os.path.relpath(file_path, start=root_dir)
-            # NOTE: always use '/' as path sep when writing the file
-            # but use os.sep while running (since unix can't deal with '\' as path sep)
-            if os.sep == '\\':
-                rel_file_path = rel_file_path.replace(os.sep, '/')
+            rel_file_path = self._normalized_path(
+                os.path.relpath(file_path, start=root_dir))
             lines.append(
                 f"{hashed_file.mtime if hashed_file.mtime is not None else ''},"
                 f"{hashed_file.hash_type},"
                 f"{hashed_file.hex_hash()} {rel_file_path}")
 
-        # we want universal newlines mode disabled here (translates \n to
-        # platform default; it's fine for reading since everything ends
-        # up as \n)
-        with open(self.get_path(), "w", encoding="UTF-8", newline='') as w:
-            w.write("\n".join(lines))
-            w.write("\n")
+        lines.append('')
 
-        return True
+        return "\n".join(lines)
 
-    def _write_as_single_hash_file(self, force: bool = False) -> bool:
+    def _as_single_hash_str(self) -> str:
         assert self.single_hash
-
-        write_file = self._check_write_file(force)
-        if not write_file:
-            return False
 
         root_dir = self.root_dir
         lines = []
         single_hash = self.single_hash
         for file_path, hashed_file in self.entries.items():
             # convert absolute paths to paths that are relative to the hash file location
-            rel_file_path = os.path.relpath(file_path, start=root_dir)
-            # NOTE: always use '/' as path sep when writing the file
-            # but use os.sep while running (since unix can't deal with '\' as path sep)
-            if os.sep == '\\':
-                rel_file_path = rel_file_path.replace(os.sep, '/')
+            rel_file_path = self._normalized_path(
+                os.path.relpath(file_path, start=root_dir))
 
             lines.append(
                 f"{hashed_file.hex_hash()} {' ' if hashed_file.text_mode else '*'}{rel_file_path}")
+        lines.append('')
 
-        # we want universal newlines mode disabled here (translates \n to
-        # platform default; it's fine for reading since everything ends
-        # up as \n)
-        # older version of TotalCommander need UTF-8 BOM for checksum files so use UTF-8-SIG
-        with open(self.get_path(), "w", encoding="UTF-8-SIG", newline='') as w:
-            w.write("\n".join(lines))
-            w.write("\n")
-
-        return write_file
+        return "\n".join(lines)
 
     def to_single_hash_file(self, hash_type: str) -> None:
         # if not self.single_hash:
@@ -1352,6 +1361,7 @@ class ChecksumHelperData:
                 # verify stored hash using old algo still matches
                 new_hash = HashedFile.compute_file_hash_ignore_missing(
                     file_path, hashed_file.hash_type)
+                # TODO new_hash might be None, below as well
                 if new_hash != hashed_file.hash_bytes:
                     logger.warning("File %s doesnt match most current hash: %s!",
                                    file_path, hashed_file.hex_hash())
@@ -1496,6 +1506,74 @@ class ChecksumHelperData:
         return crc_errors, missing, matches
 
 
+class ChecksumHelperDataIncremental(ChecksumHelperData):
+
+    FLUSH_AFTER_N_ENTRIES: Final[int] = 1000
+
+    def __init__(self, handling_checksumhelper, path_to_hash_file: str):
+        super().__init__(handling_checksumhelper, path_to_hash_file)
+
+    def __contains__(self, file_path: str) -> bool:
+        raise NotImplementedError
+
+    def __iter__(self):
+        raise NotImplementedError
+
+    def __len__(self):
+        raise NotImplementedError
+
+    def get_entry(self, file_path: str) -> 'HashedFile':
+        raise RuntimeError(
+            "Look-up not supported!")
+
+    def read(self) -> None:
+        raise RuntimeError(
+            "ChecksumHelperDataIncremental should never be read from disk!")
+
+    def write(self, force: bool = False, preserve_mtime=False, flush = False) -> bool:
+        if preserve_mtime:
+            raise RuntimeError("`preserve_mtime` not supported!")
+        if not self.entries:
+            return False
+        if not flush and len(self.entries) < self.FLUSH_AFTER_N_ENTRIES:
+            return False
+
+        # older version of TotalCommander need UTF-8 BOM for checksum files so use UTF-8-SIG
+        encoding = "UTF-8-SIG" if self.single_hash else "UTF-8"
+        if self.single_hash:
+            serialized = self._as_single_hash_str()
+        else:
+            serialized = self._as_multihash_str()
+
+        # we want universal newlines mode disabled here (translates \n to
+        # platform default; it's fine for reading since everything ends
+        # up as \n)
+        with open(self.get_path(), "a", encoding=encoding, newline='') as w:
+            w.write(serialized)
+
+        self.mtime = HashedFile.fetch_mtime(self.get_path())
+
+        self.entries.clear()
+
+        logger.debug("Flushed hash lines to %s", self.get_path())
+        return True
+
+    def to_single_hash_file(self, hash_type: str) -> None:
+        raise NotImplementedError
+
+    def relocate(self, mv_path: str) -> Tuple[Optional[str], Optional[str]]:
+        raise NotImplementedError
+
+    def copy_to(self, mv_path: str) -> None:
+        raise NotImplementedError
+
+    def filter_deleted_files(self) -> None:
+        raise NotImplementedError
+
+    def verify(self, whitelist: Optional[Sequence[str]] = None) -> Tuple[List[Tuple[str, str]], List[str], int]:
+        raise NotImplementedError
+
+
 @dataclass
 class HashedFile:
     __slots__ = ['filename', 'mtime', 'hash_type', 'hash_bytes', 'text_mode']
@@ -1603,7 +1681,8 @@ def _cl_incremental(args: argparse.Namespace):
             root_only=True,
             whitelist=args.whitelist,
             blacklist=args.blacklist,
-            only_missing=args.only_missing)
+            only_missing=args.only_missing,
+            incremental_writes=args.incremental_writes)
         if incremental is not None:
             incremental.write()
 
@@ -1621,13 +1700,15 @@ def _cl_incremental(args: argparse.Namespace):
                 start_path=os.path.abspath(os.path.join(args.path, dp)),
                 whitelist=args.whitelist,
                 blacklist=args.blacklist,
-                only_missing=args.only_missing)
+                only_missing=args.only_missing,
+                incremental_writes=args.incremental_writes)
             if incremental is not None:
                 incremental.write()
     else:
         incremental = c.do_incremental_checksums(args.hash_algorithm, single_hash=args.single_hash,
                                                  whitelist=args.whitelist, blacklist=args.blacklist,
-                                                 only_missing=args.only_missing)
+                                                 only_missing=args.only_missing,
+                                                 incremental_writes=args.incremental_writes)
         if incremental is not None:
             if args.out_filename:
                 incremental.relocate(args.out_filename)
@@ -1901,6 +1982,10 @@ def main():
                                   "modification time as the file on record! (There are ways that a "
                                   "file can change without the mtime changing and like this "
                                   "the source is not checked for corruption!)")
+    incremental.add_argument("--incremental-writes", action="store_true",
+                             help="Periodically flush the current hash file to disk."
+                                  "Use this option in case the number of files being "
+                                  "processed is very large (e.g. for a whole disk)")
     incremental.add_argument("--only-missing", action="store_true",
                              help="Only generate checksums for files without one! WARNING: Does __not__ "
                                   "check whether the checksums of files that __have a checksum__ "

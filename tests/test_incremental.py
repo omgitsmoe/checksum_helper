@@ -37,13 +37,16 @@ def setup_dir_to_checksum(request, setup_tmpdir_param):
     del checksume_hlpr
 
 
-def test_do_incremental(setup_dir_to_checksum):
+@pytest.mark.parametrize("incremental_writes", [False, True])
+def test_do_incremental(incremental_writes, setup_dir_to_checksum):
     checksume_hlpr, include_unchanged, root_dir = setup_dir_to_checksum
     assert os.path.isabs(checksume_hlpr.root_dir)
 
-    incremental = checksume_hlpr.do_incremental_checksums("sha512", single_hash=True)
-    assert incremental is not None
-    incremental.write()
+    incremental = checksume_hlpr.do_incremental_checksums(
+        "sha512", single_hash=True, incremental_writes=incremental_writes)
+    if not incremental_writes:
+        assert incremental is not None
+        incremental.write()
 
     if include_unchanged:
         verified_sha_name = "tt_2018-04-22_inc_full.sha512"
@@ -128,7 +131,8 @@ def test_cl_incremental_most_current_cli(only_missing, setup_dir_to_checksum_pat
              hash_algorithm="sha512", whitelist=None, blacklist=["hf_most_current.sha512"],
              per_directory=False, log=None,
              dont_include_unchanged=True, skip_unchanged = False,
-             dont_collect_mtime=False, out_filename=None, only_missing=only_missing)
+             dont_collect_mtime=False, out_filename=None, only_missing=only_missing,
+             incremental_writes=False)
     _cl_incremental(a)
 
     # find written sha (current date is appended)
@@ -252,7 +256,8 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
              most_current_hash_file=None, log=None,
              dont_include_unchanged=not include_unchanged, discover_hash_files_depth=depth,
              hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist,
-             skip_unchanged=False, dont_collect_mtime=False, only_missing=False)
+             skip_unchanged=False, dont_collect_mtime=False, only_missing=False,
+             incremental_writes=False)
     _cl_incremental(a)
     if whitelist is not None and blacklist is not None:
         assert caplog.record_tuples == [
@@ -286,7 +291,8 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
              dont_include_unchanged=False, discover_hash_files_depth=-1,
              log=os.path.join(root_dir, "chsmhlpr.log"),
              hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist,
-             skip_unchanged=False, dont_collect_mtime=False, only_missing=False)
+             skip_unchanged=False, dont_collect_mtime=False, only_missing=False,
+             incremental_writes=False)
     _cl_incremental(a)
 
     expected_res = [
