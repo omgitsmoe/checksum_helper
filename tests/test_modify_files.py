@@ -7,7 +7,7 @@ import time
 import checksum_helper
 
 from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args, sort_hf_contents
-from checksum_helper import ChecksumHelper, _cl_move
+from checksum_helper.checksum_helper import ChecksumHelper, _cl_move
 
 
 @pytest.fixture
@@ -136,41 +136,41 @@ def test_move_files(src, dst, depth, hash_fn_filter, expected_files_dirname, mov
     if src == os.path.join("sub4", "file1.txt") and dst == os.path.join("sub2", "sub1"):
         # filter out hash file pardir warning
         assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
-            ('Checksum_Helper', logging.ERROR,
+            ('checksum_helper.checksum_helper', logging.ERROR,
              "File %s already exists!"
              % (os.path.join(root_dir, "sub2", "sub1", "file1.txt"),)
             ),
         ]
     elif src == os.path.join("sub4", "file1.txt") and dst == os.path.join("sub2", "sub1", "file1.txt"):
         assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
-            ('Checksum_Helper', logging.ERROR,
+            ('checksum_helper.checksum_helper', logging.ERROR,
              "File %s already exists!" % (os.path.join(root_dir, "sub2", "sub1", "file1.txt"),)
             ),
         ]
     elif src == "sub1" and dst == "sub2":
         assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
-            ('Checksum_Helper', logging.ERROR,
+            ('checksum_helper.checksum_helper', logging.ERROR,
              "Couldn't move file(s): Destination path '%s' already exists"
              % (os.path.join(root_dir, "sub2", "sub1"),)
             ),
         ]
     elif src == "sub1" and dst == os.path.join("sub1", "sub5"):
         assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
-            ('Checksum_Helper', logging.ERROR,
+            ('checksum_helper.checksum_helper', logging.ERROR,
              "Couldn't move file(s): Cannot move a directory '%s' into itself '%s'."
              % (os.path.join(root_dir, "sub1"), os.path.join(root_dir, "sub1", "sub5"))
             ),
         ]
     elif src == os.path.join("sub3", "sub1") and dst == "sub4":
         assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
-            ('Checksum_Helper', logging.ERROR,
+            ('checksum_helper.checksum_helper', logging.ERROR,
              "Couldn't move file(s): Destination path '%s' already exists"
              % (os.path.join(root_dir, "sub4", "sub1"))
             ),
         ]
     elif src == os.path.join("sub4", "file1.txt") and dst == os.path.join([d for d in "abcdefghijklmnopqrstuvwxyz" if d != TESTS_DIR[0].lower()][0] + ":", os.sep, "sub2", "sub1"):
         assert [rt for rt in caplog.record_tuples if not rt[2].startswith("Found reference beyond")] == [
-            ('Checksum_Helper', logging.ERROR,
+            ('checksum_helper.checksum_helper', logging.ERROR,
              "Can't move files to a different drive than the hash files "
               "that hold their hashes!"),
         ]
@@ -221,7 +221,7 @@ def mtime_ordered_hfiles(setup_tmpdir_param):
 def test_move_preserves_mtime(mtime_ordered_hfiles, monkeypatch):
     root, hfiles, hf_mtimes = mtime_ordered_hfiles
 
-    monkeypatch.setattr(checksum_helper, "cli_yes_no", lambda x: True)
+    monkeypatch.setattr(checksum_helper.checksum_helper, "cli_yes_no", lambda x: True)
 
     src = hfiles[0]
     dst_dir = os.path.join(root, "moved")

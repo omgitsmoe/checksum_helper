@@ -4,7 +4,7 @@ import pytest
 import time
 
 from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args
-from checksum_helper import ChecksumHelper, ChecksumHelperData, _cl_build_most_current
+from checksum_helper.checksum_helper import ChecksumHelper, ChecksumHelperData, _cl_build_most_current
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ import utils
 
 from utils import TESTS_DIR, setup_tmpdir_param, Args, cshd_strip_mtime
 
-from checksum_helper import (
+from checksum_helper.checksum_helper import (
     split_path, move_fpath, HashedFile, gen_hash_from_file, ChecksumHelper,
     _cl_copy_hash_file, discover_hash_files, ChecksumHelperData, _cl_gen_missing
 )
@@ -78,13 +78,13 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
     caplog.clear()
     # caplog.set_level sets on root logger by default which is somehow not the logger setup by
     # checksum_helper so specify our logger in the kw param
-    caplog.set_level(logging.WARNING, logger='Checksum_Helper')
+    caplog.set_level(logging.WARNING, logger='checksum_helper.checksum_helper')
     checksum_hlpr = ChecksumHelper(root_dir, hash_filename_filter=())
     checksum_hlpr.build_most_current()
 
     # even if we have 2 abspath in there we only warn once!
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING,
+        ('checksum_helper.checksum_helper', logging.WARNING,
          f'Read failed! Found absolute path in hash file: {tmpdir}{os.sep}warn.sha512'),
     ]
 
@@ -201,7 +201,7 @@ def test_discover_hashfiles(depth, exclude, expected):
 def test_warn_pardir(caplog):
     root_dir = os.path.join(TESTS_DIR, "test_mixed_files", "warn_pardir")
     caplog.clear()
-    caplog.set_level(logging.WARNING, logger='Checksum_Helper')
+    caplog.set_level(logging.WARNING, logger='checksum_helper.checksum_helper')
     hf = ChecksumHelperData(None, os.path.join(root_dir, "ok.sha512"))
     hf.read()
     assert caplog.record_tuples == []
@@ -210,7 +210,7 @@ def test_warn_pardir(caplog):
     hf = ChecksumHelperData(None, os.path.join(root_dir, "warn.sha512"))
     hf.read()
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
+        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
                                              "Consider moving/copying the file using ChecksumHelper move/copy "
                                              "to the path that is the most common denominator!"
                                              % os.path.join(root_dir, "warn.sha512")),
@@ -367,7 +367,7 @@ def test_gen_missing_with_most_current_cli(setup_gen_missing, monkeypatch):
     # make sure build_most_current isn't called
     def abort(self):
         assert False # build_most_current was called
-    monkeypatch.setattr('checksum_helper.ChecksumHelper.build_most_current', abort)
+    monkeypatch.setattr('checksum_helper.checksum_helper.ChecksumHelper.build_most_current', abort)
 
     most_current_fn = os.path.join(tmpdir, "hf_most_current.sha512")
     most_current_contents = (

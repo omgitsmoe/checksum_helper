@@ -2,7 +2,7 @@ import os
 import shutil
 
 from utils import TESTS_DIR
-from checksum_helper import ChecksumHelper
+from checksum_helper.checksum_helper import ChecksumHelper
 
 
 def test_check_missing(capsys):

@@ -9,7 +9,7 @@ import copy
 from typing import cast
 
 from utils import TESTS_DIR, setup_tmpdir_param, read_file, write_file_str, Args, compare_lines_sorted
-from checksum_helper import ChecksumHelper, _cl_incremental, descend_into, HashedFile, ChecksumHelperData, LOG_LVL_VERBOSE, LOG_LVL_EXTRAVERBOSE
+from checksum_helper.checksum_helper import ChecksumHelper, _cl_incremental, descend_into, HashedFile, ChecksumHelperData, LOG_LVL_VERBOSE, LOG_LVL_EXTRAVERBOSE
 
 
 #                       filter, include unchanged
@@ -84,7 +84,7 @@ def test_cl_incremental_most_current_cli(only_missing, setup_dir_to_checksum_pat
     # make sure build_most_current isn't called
     def abort(self):
         assert False # build_most_current was called
-    monkeypatch.setattr('checksum_helper.ChecksumHelper.build_most_current', abort)
+    monkeypatch.setattr('checksum_helper.checksum_helper.ChecksumHelper.build_most_current', abort)
 
     verified_sha_name = "tt_2018-04-22_inc.sha512"
     verified_sha_contents = read_file(os.path.join(TESTS_DIR,
@@ -134,6 +134,9 @@ def test_cl_incremental_most_current_cli(only_missing, setup_dir_to_checksum_pat
     # find written sha (current date is appended)
     generated_sha_name = f"tt_{time.strftime('%Y-%m-%d')}.sha512"
     generated_sha_contents = read_file(os.path.join(root_dir, generated_sha_name))
+
+    print("very", verified_sha_contents)
+    print("gen", generated_sha_contents)
 
     compare_lines_sorted(verified_sha_contents, generated_sha_contents)
 
@@ -242,7 +245,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
     caplog.clear()
     # caplog.set_level sets on root logger by default which is somehow not the logger setup by
     # checksum_helper so specify our logger in the kw param
-    caplog.set_level(logging.WARNING, logger='Checksum_Helper')
+    caplog.set_level(logging.WARNING, logger='checksum_helper.checksum_helper')
     monkeypatch.setattr('builtins.input', lambda x: "y")
 
     a = Args(path=root_dir, hash_filename_filter=hash_fn_filter, single_hash=True,
@@ -253,7 +256,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
     _cl_incremental(a)
     if whitelist is not None and blacklist is not None:
         assert caplog.record_tuples == [
-            ('Checksum_Helper', logging.ERROR, 'Can only use either a whitelist or blacklist - not both!'),
+            ('checksum_helper.checksum_helper', logging.ERROR, 'Can only use either a whitelist or blacklist - not both!'),
             ]
     else:
         verified_sha_contents = read_file(os.path.join(TESTS_DIR,
@@ -414,7 +417,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
 
 
     caplog.clear()
-    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='Checksum_Helper')
+    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='checksum_helper.checksum_helper')
 
     ch.options['include_unchanged_files_incremental'] = False
     rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
@@ -425,7 +428,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
 
     assert caplog.record_tuples == [
-        ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f"Skipping generation of a hash for file '{abs_fp}' since the mtime matches!"),
+        ('checksum_helper.checksum_helper', LOG_LVL_EXTRAVERBOSE, f"Skipping generation of a hash for file '{abs_fp}' since the mtime matches!"),
     ]
 
     # diff hash_type -> should still re-hash
@@ -442,8 +445,8 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, mtime, "md5", binascii.a2b_hex("0cc175b9c0f1b6a831c399e269772661"), False))
 
     assert caplog.record_tuples == [
-        ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f"Skipping generation of a hash for file '{abs_fp}' since the mtime matches!"),
-        ('Checksum_Helper', LOG_LVL_VERBOSE, f"Recorded hash used sha512 as algorithm -> re-hashing with md5: {abs_fp}!"),
+        ('checksum_helper.checksum_helper', LOG_LVL_EXTRAVERBOSE, f"Skipping generation of a hash for file '{abs_fp}' since the mtime matches!"),
+        ('checksum_helper.checksum_helper', LOG_LVL_VERBOSE, f"Recorded hash used sha512 as algorithm -> re-hashing with md5: {abs_fp}!"),
     ]
 
     # restore
@@ -457,7 +460,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
     #
 
     caplog.clear()
-    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='Checksum_Helper')
+    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='checksum_helper.checksum_helper')
 
     rel_fp, mtime, hash_type, hash_str = build_verify_hf_most_current_data[3]
     abs_fp = os.path.normpath(os.path.join(root_dir, rel_fp))
@@ -471,7 +474,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
 
     assert caplog.record_tuples == [
-        ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f"Old and new hashes match for file {abs_fp}!"),
+        ('checksum_helper.checksum_helper', LOG_LVL_EXTRAVERBOSE, f"Old and new hashes match for file {abs_fp}!"),
     ]
 
     # restore
@@ -497,7 +500,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, None, "sha512", binascii.a2b_hex(hash_str), False))
 
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.INFO, f"File \"{abs_fp}\" changed, a new hash was generated!"),
+        ('checksum_helper.checksum_helper', logging.INFO, f"File \"{abs_fp}\" changed, a new hash was generated!"),
     ]
 
     # restore
@@ -524,7 +527,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
 
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.INFO, f"File \"{abs_fp}\" changed, a new hash was generated!"),
+        ('checksum_helper.checksum_helper', logging.INFO, f"File \"{abs_fp}\" changed, a new hash was generated!"),
     ]
 
     # restore
@@ -551,7 +554,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
 
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.INFO,
+        ('checksum_helper.checksum_helper', logging.INFO,
             "File hashes don't match with the file on disk being older "
             "than the recorded modfication time! The hash of the file "
             f"on disk will be used: {abs_fp}")
@@ -578,7 +581,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, mtime, "sha512", binascii.a2b_hex(hash_str), False))
 
     assert caplog.record_tuples == [
-        ('Checksum_Helper', logging.WARNING, f"Unexpected change of file hash, when modification time is the same for file: {abs_fp}"),
+        ('checksum_helper.checksum_helper', logging.WARNING, f"Unexpected change of file hash, when modification time is the same for file: {abs_fp}"),
     ]
 
     # restore
@@ -589,7 +592,7 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
     #
 
     caplog.clear()
-    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='Checksum_Helper')
+    caplog.set_level(LOG_LVL_EXTRAVERBOSE, logger='checksum_helper.checksum_helper')
 
 
     # so normally matching hashes would result in not including the file
@@ -603,8 +606,8 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
             HashedFile(abs_fp, mtime, "md5", binascii.a2b_hex("0cc175b9c0f1b6a831c399e269772661"), False))
 
     assert caplog.record_tuples == [
-            ('Checksum_Helper', LOG_LVL_EXTRAVERBOSE, f'Old and new hashes match for file {abs_fp}!'),
-            ('Checksum_Helper', LOG_LVL_VERBOSE, f"Recorded hash used sha512 as algorithm -> re-hashing with md5: {abs_fp}!")
+            ('checksum_helper.checksum_helper', LOG_LVL_EXTRAVERBOSE, f'Old and new hashes match for file {abs_fp}!'),
+            ('checksum_helper.checksum_helper', LOG_LVL_VERBOSE, f"Recorded hash used sha512 as algorithm -> re-hashing with md5: {abs_fp}!")
     ]
 
     # restore

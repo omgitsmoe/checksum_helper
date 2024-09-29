@@ -3,7 +3,7 @@ import sys
 import glob
 sys.path.insert(0, os.path.abspath('..'))
 
-from checksum_helper import gen_hash_from_file, HASH_FILE_EXTENSIONS
+from checksum_helper.checksum_helper import gen_hash_from_file, HASH_FILE_EXTENSIONS
 
 def replace_in_all_hashfiles(literal, replacement):
     for dirpath, dirnames, fnames in os.walk('.'):

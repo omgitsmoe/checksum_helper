@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from checksum_helper import wildcard_match
+from checksum_helper.checksum_helper import wildcard_match
 
 
 def wildcard_caller(text, pattern, expected):
