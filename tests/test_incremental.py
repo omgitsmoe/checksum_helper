@@ -621,3 +621,116 @@ def test_build_verify(setup_tmpdir_param, caplog) -> None:
     assert include is False
     assert generated is None
 
+
+@pytest.mark.parametrize("wl,bl,expected", [
+    (None, None, [
+        "new 2.txt",
+        "new 3.md5",
+        "new 3.txt",
+        "new 4.txt",
+        "tt.sha512",
+        "tt2.sha512",
+        os.path.join("sub1", "new 2.txt"),
+        os.path.join("sub1", "new 3.txt"),
+        os.path.join("sub1", "new 4 - Kopie.sha512"),
+        os.path.join("sub1", "new 4.txt"),
+        os.path.join("sub1", "sub2", "new 2.txt"),
+        os.path.join("sub1", "sub2", "new 3.txt"),
+        os.path.join("sub1", "sub2", "new 4.txt"),
+     ]),
+    ([
+        "new 2.txt", "tt.sha512", os.path.join("sub1", "new 4.txt"),
+        os.path.join("sub1", "sub2", "new 3.txt")
+     ],
+     None, [
+        "new 2.txt",
+        "tt.sha512",
+        os.path.join("sub1", "new 4.txt"),
+        os.path.join("sub1", "sub2", "new 3.txt"),
+     ]),
+    ([
+        "new 2.txt", "tt.sha512", os.path.join("sub1", "new 4.txt"),
+        os.path.join("sub1", "sub2", "*")
+     ],
+     None, [
+        "new 2.txt",
+        "tt.sha512",
+        os.path.join("sub1", "new 4.txt"),
+        os.path.join("sub1", "sub2", "new 2.txt"),
+        os.path.join("sub1", "sub2", "new 3.txt"),
+        os.path.join("sub1", "sub2", "new 4.txt"),
+     ]),
+    ([
+        "*.sha512", "tt.sha512", os.path.join("sub1", "sub2", "*.txt")
+     ],
+     None, [
+        "tt.sha512",
+        "tt2.sha512",
+        os.path.join("sub1", "new 4 - Kopie.sha512"),
+        os.path.join("sub1", "sub2", "new 2.txt"),
+        os.path.join("sub1", "sub2", "new 3.txt"),
+        os.path.join("sub1", "sub2", "new 4.txt"),
+     ]),
+    (None,
+     [
+        "new 3.md5",
+        "tt2.sha512",
+        "sjkfsd.sha512",
+        os.path.join("sub1", "new 3.txt"),
+        os.path.join("sub1", "sub2", "new 4.txt"),
+     ], [
+        "new 2.txt",
+        "new 3.txt",
+        "new 4.txt",
+        "tt.sha512",
+        os.path.join("sub1", "new 2.txt"),
+        os.path.join("sub1", "new 4 - Kopie.sha512"),
+        os.path.join("sub1", "new 4.txt"),
+        os.path.join("sub1", "sub2", "new 2.txt"),
+        os.path.join("sub1", "sub2", "new 3.txt"),
+     ]),
+    (None,
+     [
+        "new 3.md5",
+        "tt2.sha512",
+        "sjkfsd.sha512",
+        os.path.join("sub1", "new 3.txt"),
+        os.path.join("sub1", "sub2", "*"),
+     ], [
+        "new 2.txt",
+        "new 3.txt",
+        "new 4.txt",
+        "tt.sha512",
+        os.path.join("sub1", "new 2.txt"),
+        os.path.join("sub1", "new 4 - Kopie.sha512"),
+        os.path.join("sub1", "new 4.txt"),
+     ]),
+    (None,
+     [
+        "new 3.md5",
+        "tt2.sha512",
+        "sjkfsd.sha512",
+        "sub*",
+     ], [
+        "new 2.txt",
+        "new 3.txt",
+        "new 4.txt",
+        "tt.sha512",
+     ]),
+    (None,
+     [
+        "*.txt",
+     ], [
+        "new 3.md5",
+        "tt.sha512",
+        "tt2.sha512",
+        os.path.join("sub1", "new 4 - Kopie.sha512"),
+     ]),
+])
+def test_filtered_walk(wl, bl, expected, setup_dir_to_checksum):
+    # TODO file list path
+    checksume_hlpr, include_unchanged, root_dir = setup_dir_to_checksum
+    ch = ChecksumHelper(root_dir)
+    abs_expected = [os.path.join(root_dir, p) for p in sorted(expected)]
+    assert abs_expected == sorted(list(ch.filtered_walk(
+        ch.root_dir, False, whitelist=wl, blacklist=bl)))
