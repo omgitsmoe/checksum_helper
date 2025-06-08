@@ -1,0 +1,6 @@
+- FIX incremental-writes does not respect -o
+    - make it choose a unique name for the first write
+    - then relocate after
+- diff a file tree based on previous hash file
+    - addded/modified/deleted should be written to the given path
+    - along side with the new hash file

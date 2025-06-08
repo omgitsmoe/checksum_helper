@@ -16,6 +16,32 @@ def setup_dir_to_checksum(setup_tmpdir_param):
     return root_dir
 
 
+def test_build_most_current_only_read_unread_files(setup_dir_to_checksum, monkeypatch):
+    root_dir = setup_dir_to_checksum
+    ch = ChecksumHelper(root_dir)
+    ch.discover_hash_files()
+
+    for cshd in ch.all_hash_files:
+        if cshd.get_path().endswith("tt2.sha512"):
+            continue
+        cshd.read()
+
+    read_called_on = []
+
+    def patched_read(s):
+        nonlocal read_called_on
+        read_called_on.append(s)
+
+    monkeypatch.setattr(
+        "checksum_helper.checksum_helper.ChecksumHelperData.read",
+        patched_read)
+
+    ch.build_most_current()
+
+    assert len(read_called_on) == 1
+    assert read_called_on[0].get_path().endswith("tt2.sha512")
+
+
 @pytest.mark.parametrize("hash_fn_filter,search_depth,dont_filter_deleted,verified_sha_name", [
     ((), 0, True, "most_current.sha512"),
     (("*.md5",), -1, False, "most_current_md5_filtered.sha512"),
@@ -72,8 +98,8 @@ def test_all_paths_normpath():
 
     c = ChecksumHelper(root_dir, hash_filename_filter=None)
     c.options["discover_hash_files_depth"] = -1
-    c.read_all_hash_files()
     for hf in c.all_hash_files:
+        hf.read()
         # make sure all paths are properly normalized so we dont have get sth like this:
         # C://test//abc//123//..//.//file.txt
         assert all(p == os.path.normpath(p) for p in hf.entries.keys())

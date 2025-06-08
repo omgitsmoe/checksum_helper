@@ -378,6 +378,7 @@ class ChecksumHelper:
         self.root_dir_name: str = os.path.basename(self.root_dir)
 
         self.all_hash_files: List["ChecksumHelperData"] = []
+        self.discovered_hash_files = False
         # HashFile containing the most current hashes from all the combined hash
         # files that were found using discover_hash_files
         # -> also contains hashes for files that couldve been deleted
@@ -419,29 +420,16 @@ class ChecksumHelper:
                                          exclude_pattern=self.hash_filename_filter)
         self.all_hash_files = [ChecksumHelperData(
             self, hfile_path) for hfile_path in hash_files]
-
-    def read_all_hash_files(self) -> None:
-        if not self.all_hash_files:
-            self.discover_hash_files()
-        for hash_file in self.all_hash_files:
-            hash_file.read()
-
-    def hash_files_initialized(self) -> bool:
-        return True if self.all_hash_files and all(
-            hfile.entries for hfile in self.all_hash_files) else False
+        self.discovered_hash_files = True
 
     def most_current_from_file(self, filename: str) -> None:
         self.hash_file_most_current = ChecksumHelperData(self, filename)
         self.hash_file_most_current.read()
 
     def build_most_current(self) -> None:
-        if not self.hash_files_initialized():
-            self.read_all_hash_files()
+        if not self.discovered_hash_files:
+            self.discover_hash_files()
 
-        # NOTE: it would be better to use creation times here, but there are really
-        # tracked (or are inaccessible) on UNIX systems; so we use the modtime
-        # and try to preserve it when moving/copying files
-        # -> can still lead to using older hashes when a user modifies a file on their own
         # TODO add date to cshd files + add version number
         # sort by ascending mtime so the newest entries get written last
         self.sort_hash_files_by_mtime()
@@ -473,6 +461,8 @@ class ChecksumHelper:
         # => different entries in the CSHD, but same file being accessed on a Windows
         # system
         for cshd in self.all_hash_files:
+            if not cshd.was_read:
+                cshd.read()
             for file_path, hashed_file in cshd.entries.items():
                 # since we add hashes from different files we have to combine the realtive
                 # path IN the hashfile with the path TO the hashfile
@@ -485,6 +475,8 @@ class ChecksumHelper:
                         combined_path, hashed_file.mtime, hashed_file.hash_type,
                         hashed_file.hash_bytes, hashed_file.text_mode)
                 )
+            # NOTE: free memory in case the file was very large
+            cshd.clear()
 
         self.hash_file_most_current = most_current
 
@@ -804,7 +796,15 @@ class ChecksumHelper:
 
     @staticmethod
     def _sort_hash_files_by_mtime(hash_files: List["ChecksumHelperData"]) -> List["ChecksumHelperData"]:
-        return sorted(hash_files, key=lambda x: cast(float, x.mtime))
+        # NOTE: we don't want to enforce that the whole file has to be
+        #       read for sorting, so just read the mtime
+        def mtime_key(cshd: "ChecksumHelperData") -> float:
+            mtime = cshd.read_mtime()
+            if mtime is None:
+                raise RuntimeError("Failed to retrieve mtime of hash file!")
+            return mtime
+
+        return sorted(hash_files, key=mtime_key)
 
     def sort_hash_files_by_mtime(self) -> None:
         self.all_hash_files = ChecksumHelper._sort_hash_files_by_mtime(
@@ -1004,6 +1004,7 @@ class ChecksumHelperData:
         # make sure we get an absolute path
         self.root_dir, self.filename = os.path.split(
             os.path.normpath(os.path.abspath(path_to_hash_file)))
+        self._was_read = False
         # filename -> 'HashedFile' (filename is an absolute and normalized path)
         self.entries: Dict[str, 'HashedFile'] = {}
         self.mtime: Optional[float] = None
@@ -1047,6 +1048,10 @@ class ChecksumHelperData:
         else:
             return True
 
+    @property
+    def was_read(self) -> bool:
+        return self._was_read
+
     def get_entry(self, file_path: str) -> Optional['HashedFile']:
         """
         Pass in file_path (normalized here using normpath) to get stored hash for
@@ -1076,6 +1081,11 @@ class ChecksumHelperData:
     def get_path(self) -> str:
         return os.path.join(self.root_dir, self.filename)
 
+    def clear(self):
+        self.entries.clear()
+        self.entries = None
+        self.entries = {}
+
     def read(self) -> None:
         # TODO handle failure
         try:
@@ -1083,6 +1093,7 @@ class ChecksumHelperData:
                 self._read_from_single_hash_file()
             else:
                 self._read()
+            self._was_read = True
         except Exception as e:
             logger.error(
                 "Reading of hash file %s failed due to an unknown error!"
@@ -1090,12 +1101,17 @@ class ChecksumHelperData:
                 self.get_path(), str(e))
             # TODO should we really continue here?
 
-    def _read(self) -> None:
+    def read_mtime(self) -> Optional[float]:
         try:
-            self.mtime = os.stat(self.get_path()).st_mtime
+            return os.stat(self.get_path()).st_mtime
         except (FileNotFoundError, PermissionError):
             logger.error("Could not access/find hash file '%s'",
                          self.get_path())
+            return None
+
+    def _read(self) -> None:
+        self.mtime = self.read_mtime()
+        if self.mtime is None:
             return
 
         with open(self.get_path(), "r", encoding="UTF-8") as f:
@@ -1151,11 +1167,8 @@ class ChecksumHelperData:
 
     def _read_from_single_hash_file(self) -> None:
         hash_type = self.hash_type
-        try:
-            self.mtime = os.stat(self.get_path()).st_mtime
-        except (FileNotFoundError, PermissionError):
-            logger.error("Could not access/find hash file '%s'",
-                         self.get_path())
+        self.mtime = self.read_mtime()
+        if self.mtime is None:
             return
 
         # first line had \ufeff which is the BOM for utf-8 with bom
