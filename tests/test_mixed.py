@@ -85,7 +85,10 @@ e7ef17a6816ef8af636f6d2d4d2707c8ccfda931d0ec2bd576292eafb826d690004798079d4d3524
     # even if we have 2 abspath in there we only warn once!
     assert caplog.record_tuples == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f'Read failed! Found absolute path in hash file: {tmpdir}{os.sep}warn.sha512'),
+         "File will be skipped: Malformed hash file: Absolute path found on "
+         f"line 2 in file '{tmpdir}{os.sep}warn.sha512': "
+         "'5267768822ee624d48fce15ec5ca79cbd602cb7f4c2157a516556991f22ef8c7b5ef7b18d1ff41c59370efb0858651d44a936c11b7b144c48fe04df3c6a3e8da "
+         f"*{dyn_abspath}{os.sep}new 3.txt'"),
     ]
 
 

@@ -1,4 +1,6 @@
 import os
+import logging
+
 import pytest
 
 from checksum_helper import checksum_helper as ch
@@ -27,3 +29,119 @@ def test_cshd_was_read(setup_tmpdir_param):
     assert cshd.was_read is False
     cshd.read()
     assert cshd.was_read is True
+
+
+def test_cshd_handles_empty_lines(setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+    cshd_path = os.path.join(tmpdir, "foo.cshd")
+
+    with open(cshd_path, 'w', encoding='utf-8') as f:
+        f.write(
+"""
+
+1337.1337,md5,deadbeef foo/bar/baz/xer.txt
+
+1337.1337,md5,abcdef goo.mp4
+
+""")
+
+    cshd = ch.ChecksumHelperData(None, cshd_path)
+    assert cshd.was_read is False
+    cshd.read()
+    assert cshd.was_read is True
+    assert len(cshd) == 2
+    assert cshd.get_entry(os.path.join(tmpdir, 'foo/bar/baz/xer.txt'))
+    assert cshd.get_entry(os.path.join(tmpdir, 'goo.mp4'))
+
+
+def test_cshd_single_hash_handles_empty_lines(setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+    cshd_path = os.path.join(tmpdir, "foo.md5")
+
+    with open(cshd_path, 'w', encoding='utf-8') as f:
+        f.write(
+"""
+
+deadbeef  foo/bar/baz/xer.txt
+
+abcdef  goo.mp4
+
+""")
+
+    cshd = ch.ChecksumHelperData(None, cshd_path)
+    assert cshd.was_read is False
+    cshd.read()
+    assert cshd.was_read is True
+    assert len(cshd) == 2
+    assert cshd.get_entry(os.path.join(tmpdir, 'foo/bar/baz/xer.txt'))
+    assert cshd.get_entry(os.path.join(tmpdir, 'goo.mp4'))
+
+
+def test_cshd_not_read_on_invalid_hash_line(setup_tmpdir_param):
+    tmpdir = setup_tmpdir_param
+    cshd_path = os.path.join(tmpdir, "foo.cshd")
+
+    with open(cshd_path, 'w', encoding='utf-8') as f:
+        f.write(
+"""
+
+askdfjks fksdsk 24342
+
+""")
+
+    cshd = ch.ChecksumHelperData(None, cshd_path)
+    assert cshd.was_read is False
+    cshd.read()
+    assert cshd.was_read is False
+    assert len(cshd) == 0
+
+
+def test_cshd_logs_faulty_hash_line(setup_tmpdir_param, caplog):
+    tmpdir = setup_tmpdir_param
+    cshd_path = os.path.join(tmpdir, "foo.cshd")
+
+    faulty_line = 'abcef  sdkfjks'
+    with open(cshd_path, 'w', encoding='utf-8') as f:
+        f.write(
+f"""
+
+
+{faulty_line}
+
+""")
+
+    caplog.set_level(logging.INFO, logger='checksum_helper.checksum_helper')
+
+    cshd = ch.ChecksumHelperData(None, cshd_path)
+    assert cshd.was_read is False
+    cshd.read()
+
+    assert (
+        'checksum_helper.checksum_helper', logging.WARN, f"File will be skipped: Malformed hash file: Invalid hash line at line 4 in file '{cshd_path}': '{faulty_line}'"
+    ) in caplog.record_tuples
+
+
+def test_cshd_single_hash_logs_faulty_hash_line(setup_tmpdir_param, caplog):
+    tmpdir = setup_tmpdir_param
+    cshd_path = os.path.join(tmpdir, "foo.md5")
+
+    faulty_line = 'sdkfjks'
+    with open(cshd_path, 'w', encoding='utf-8') as f:
+        f.write(
+f"""
+
+
+{faulty_line}
+
+""")
+
+    caplog.set_level(logging.INFO, logger='checksum_helper.checksum_helper')
+
+    cshd = ch.ChecksumHelperData(None, cshd_path)
+    assert cshd.was_read is False
+    cshd.read()
+
+    assert (
+        'checksum_helper.checksum_helper', logging.WARN, f"File will be skipped: Malformed hash file: Expected a line like '[0-9a-fA-F]+ ( |*)[^/]+', got '{faulty_line}' on line 4 in file '{cshd_path}'."
+    ) in caplog.record_tuples
+

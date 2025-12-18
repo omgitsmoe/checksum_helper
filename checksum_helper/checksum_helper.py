@@ -48,6 +48,14 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
+class ChecksumHelperError(Exception):
+    pass
+
+
+class InvalidHashLineError(ChecksumHelperError):
+    pass
+
+
 def cli_yes_no(question_str: str) -> bool:
     ans = input(f"{question_str} y/n:\n")
     while True:
@@ -1102,6 +1110,8 @@ class ChecksumHelperData:
             else:
                 self._read()
             self._was_read = True
+        except InvalidHashLineError as e:
+            logger.warn("File will be skipped: Malformed hash file: %s", str(e))
         except Exception as e:
             logger.error(
                 "Reading of hash file %s failed due to an unknown error!"
@@ -1126,8 +1136,10 @@ class ChecksumHelperData:
             text = f.read()
 
         warned_pardir_ref = False
-        for ln in text.splitlines():
+        for i, ln in enumerate(text.splitlines()):
             stripped = ln.strip()
+            if not stripped:
+                continue
 
             mtime = None
             size = None
@@ -1144,18 +1156,18 @@ class ChecksumHelperData:
 
                 file_path = stripped[hash_str_end + 1:]
             except (ValueError, IndexError):
-                logger.warning("Read failed: there were invalid lines in cshd file '%s'. ",
-                               self.get_path())
-                return
+                raise InvalidHashLineError(
+                    f"Invalid hash line at line {i + 1} in file "
+                    f"'{self.get_path()}': '{ln}'")
 
             # alert on abspath in file; we use abspath internally but only write
             # relative paths to file
             if os.path.isabs(file_path):
-                logger.warning(
-                    "Read failed! Found absolute path in hash file: %s", self.get_path())
                 # even if drive letters match: drives could be from different computers
                 # or could have been remounted
-                return
+                raise InvalidHashLineError(
+                    f"Absolute path found in hash line at line {i + 1} in file "
+                    f"'{self.get_path()}': '{ln}'")
             else:
                 if not warned_pardir_ref and '..' + os.sep in os.path.normpath(file_path):
                     logger.warning("Found reference beyond the hash file's root dir in file: '%s'. "
@@ -1199,7 +1211,7 @@ class ChecksumHelperData:
                 af.close()
 
         warned_pardir_ref = False
-        for ln in text.splitlines():
+        for i, ln in enumerate(text.splitlines()):
             # from GNU *sum utils:
             # default mode is to print a line with checksum, a character
             # indicating input mode ('*' for binary, space for text), and name
@@ -1217,29 +1229,27 @@ class ChecksumHelperData:
                 space_or_asterisk = stripped[first_space + 1]
                 file_path = stripped[first_space + 2:]
             except (ValueError, IndexError):
-                logger.warning("Read failed: there were invalid lines in hash file '%s'. "
-                               "The correct format is:\n"
-                               "[0-9a-fA-F]+ ( |*)[^/]+", self.get_path())
-                return
+                raise InvalidHashLineError(
+                    f"Expected a line like '[0-9a-fA-F]+ ( |*)[^/]+', got '{ln}' "
+                    f"on line {i + 1} in file '{self.get_path()}'.")
 
             if space_or_asterisk == " ":
                 text_mode = True
             elif space_or_asterisk == "*":
                 text_mode = False
             else:
-                logger.warning(
-                    "Read failed: Expected either '*' or ' ' got '%s' in file %s",
-                    space_or_asterisk, self.get_path())
-                return
+                raise InvalidHashLineError(
+                    f"Expected either '*' or ' ' got '{space_or_asterisk}' "
+                    f"on line {i + 1} in file '{self.get_path()}'.")
 
             # alert on abspath in file; we use abspath internally but only write
             # relative paths to file
             if os.path.isabs(file_path):
-                logger.warning(
-                    "Read failed! Found absolute path in hash file: %s", self.get_path())
                 # even if drive letters match: drives could be from different computers
                 # or could have been remounted
-                return
+                raise InvalidHashLineError(
+                    f"Absolute path found on line {i + 1} in file "
+                    f"'{self.get_path()}': '{ln}'")
             else:
                 if not warned_pardir_ref and '..' + os.sep in os.path.normpath(file_path):
                     logger.warning("Found reference beyond the hash file's root dir in file: '%s'. "
@@ -1259,10 +1269,9 @@ class ChecksumHelperData:
             try:
                 hash_bytes = binascii.a2b_hex(hash_str)
             except binascii.Error:
-                logger.warning("Read failed: there were invalid lines in hash file '%s'. "
-                               "The correct format is:\n"
-                               "[0-9a-fA-F]+ ( |*)[^/]+", self.get_path())
-                return
+                raise InvalidHashLineError(
+                    f"Expected a hexadecimal hash string, got '{hash_bytes}' "
+                    f"on line {i + 1} in file '{self.get_path()}'.")
 
             self.entries[abs_normed_path] = HashedFile(
                 abs_normed_path, None, cast(str, hash_type), hash_bytes, text_mode)
