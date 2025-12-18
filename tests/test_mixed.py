@@ -213,10 +213,14 @@ def test_warn_pardir(caplog):
     hf = ChecksumHelperData(None, os.path.join(root_dir, "warn.sha512"))
     hf.read()
     assert caplog.record_tuples == [
-        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!"
-                                             % os.path.join(root_dir, "warn.sha512")),
+        ('checksum_helper.checksum_helper', logging.WARNING,
+         "Found reference beyond the hash file's root dir "
+         f"on line 1 in file: '{os.path.join(root_dir, "warn.sha512")}': "
+         "'7d6fa89f9ad229628d43b7cf7a57fe5a5ee6ce4a8d6c9ee684f9174014e2b7837040d5666357b6bdebc30dd96de40a32f9d98a6725081e60f8362a016e895efa *../new 3.txt'. "
+         "Consider moving/copying the file using "
+         "ChecksumHelper move/copy "
+         "to the path that is the most common denominator!",
+        ),
     ]
 
 

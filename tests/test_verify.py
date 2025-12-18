@@ -98,10 +98,14 @@ def test_verify_hfile_warn_beyond_root_and_wrong_crc(caplog):
     # cwd hasn't changed
     assert starting_cwd == os.getcwd()
     x_contains_all_y(caplog.record_tuples, [
-        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!"
-                                             % os.path.join(test_verify_root, "sub3", "sub2", "sub3_sub2.sha512")),
+        ('checksum_helper.checksum_helper', logging.WARNING,
+         "Found reference beyond the hash file's root dir "
+         f"on line 1 in file: '{os.path.join(test_verify_root, "sub3", "sub2", "sub3_sub2.sha512")}': "
+         "'cb44d7905e95c30198d40f6ebe0b3c716e3fbaa3ed16148980435362bcb1bee947e46003f7f6626ee24524e88c0ecb7cac36d1596c47973b6bb9578cabd7d367 *../file1.txt'. "
+         "Consider moving/copying the file using "
+         "ChecksumHelper move/copy "
+         "to the path that is the most common denominator!",
+        ),
         ('checksum_helper.checksum_helper', logging.INFO, f'..{os.sep}file1.txt: SHA512 OK'),
         ('checksum_helper.checksum_helper', logging.WARNING,
          f'..{os.sep}sub1{os.sep}file1.txt: SHA512 FAILED'),
@@ -287,10 +291,14 @@ def test_verify_all(caplog):
     caplog.clear()
     assert _cl_verify_all(a) == (20, 13, 4, 3)
     x_contains_all_y(caplog.record_tuples, [
-        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!"
-                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
+        ('checksum_helper.checksum_helper', logging.WARNING,
+         "Found reference beyond the hash file's root dir "
+         f"on line 1 in file: '{os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")}': "
+         "'cb44d7905e95c30198d40f6ebe0b3c716e3fbaa3ed16148980435362bcb1bee947e46003f7f6626ee24524e88c0ecb7cac36d1596c47973b6bb9578cabd7d367 *../file1.txt'. "
+         "Consider moving/copying the file using "
+         "ChecksumHelper move/copy "
+         "to the path that is the most common denominator!",
+        ),
         ('checksum_helper.checksum_helper', logging.INFO, f'new 2.txt: MD5 OK'),
         ('checksum_helper.checksum_helper', logging.INFO, f'sub3{os.sep}file1.txt: SHA512 OK'),
         ('checksum_helper.checksum_helper', logging.WARNING,
@@ -341,10 +349,14 @@ def test_verify_all(caplog):
     caplog.clear()
     assert _cl_verify_all(a) == (15, 10, 3, 2)
     x_contains_all_y(caplog.record_tuples, [
-        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!"
-                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
+        ('checksum_helper.checksum_helper', logging.WARNING,
+         "Found reference beyond the hash file's root dir "
+         f"on line 1 in file: '{os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")}': "
+         "'cb44d7905e95c30198d40f6ebe0b3c716e3fbaa3ed16148980435362bcb1bee947e46003f7f6626ee24524e88c0ecb7cac36d1596c47973b6bb9578cabd7d367 *../file1.txt'. "
+         "Consider moving/copying the file using "
+         "ChecksumHelper move/copy "
+         "to the path that is the most common denominator!",
+        ),
         ('checksum_helper.checksum_helper', logging.INFO, f'sub3{os.sep}file1.txt: SHA512 OK'),
         ('checksum_helper.checksum_helper', logging.WARNING,
          f'sub3{os.sep}sub1{os.sep}file1.txt: SHA512 FAILED'),
@@ -429,10 +441,14 @@ def test_verify_filter(caplog):
     caplog.clear()
     _cl_verify_filter(a)
     x_contains_all_y(caplog.record_tuples, [
-        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!"
-                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
+        ('checksum_helper.checksum_helper', logging.WARNING,
+         "Found reference beyond the hash file's root dir "
+         f"on line 1 in file: '{os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")}': "
+         "'cb44d7905e95c30198d40f6ebe0b3c716e3fbaa3ed16148980435362bcb1bee947e46003f7f6626ee24524e88c0ecb7cac36d1596c47973b6bb9578cabd7d367 *../file1.txt'. "
+         "Consider moving/copying the file using "
+         "ChecksumHelper move/copy "
+         "to the path that is the most common denominator!",
+        ),
         ('checksum_helper.checksum_helper', logging.INFO, f'sub3{os.sep}file1.txt: SHA512 OK'),
         ('checksum_helper.checksum_helper', logging.WARNING,
          f'sub3{os.sep}sub1{os.sep}file1.txt: SHA512 FAILED'),
@@ -466,10 +482,14 @@ def test_verify_filter(caplog):
     caplog.clear()
     _cl_verify_filter(a)
     x_contains_all_y(caplog.record_tuples, [
-        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!"
-                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
+        ('checksum_helper.checksum_helper', logging.WARNING,
+         "Found reference beyond the hash file's root dir "
+         f"on line 1 in file: '{os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")}': "
+         "'cb44d7905e95c30198d40f6ebe0b3c716e3fbaa3ed16148980435362bcb1bee947e46003f7f6626ee24524e88c0ecb7cac36d1596c47973b6bb9578cabd7d367 *../file1.txt'. "
+         "Consider moving/copying the file using "
+         "ChecksumHelper move/copy "
+         "to the path that is the most common denominator!",
+        ),
         ('checksum_helper.checksum_helper', logging.INFO, f'sub3{os.sep}file1.txt: SHA512 OK'),
         ('checksum_helper.checksum_helper', logging.WARNING,
          f'sub3{os.sep}sub1{os.sep}file1.txt: SHA512 FAILED'),
@@ -519,10 +539,14 @@ def test_verify_filter(caplog):
     caplog.clear()
     _cl_verify_filter(a)
     x_contains_all_y(caplog.record_tuples, [
-        ('checksum_helper.checksum_helper', logging.WARNING, "Found reference beyond the hash file's root dir in file: '%s'. "
-                                             "Consider moving/copying the file using ChecksumHelper move/copy "
-                                             "to the path that is the most common denominator!"
-                                             % os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")),
+        ('checksum_helper.checksum_helper', logging.WARNING,
+         "Found reference beyond the hash file's root dir "
+         f"on line 1 in file: '{os.path.join(root_dir, "sub3", "sub2", "sub3_sub2.sha512")}': "
+         "'cb44d7905e95c30198d40f6ebe0b3c716e3fbaa3ed16148980435362bcb1bee947e46003f7f6626ee24524e88c0ecb7cac36d1596c47973b6bb9578cabd7d367 *../file1.txt'. "
+         "Consider moving/copying the file using "
+         "ChecksumHelper move/copy "
+         "to the path that is the most common denominator!",
+        ),
         ('checksum_helper.checksum_helper', logging.WARNING, f'new 3.txt: SHA512 FAILED'),
         ('checksum_helper.checksum_helper', logging.INFO, f'new 4.txt: SHA512 OK'),
         ('checksum_helper.checksum_helper', logging.INFO, f'sub1{os.sep}new 2.txt: SHA512 OK'),
