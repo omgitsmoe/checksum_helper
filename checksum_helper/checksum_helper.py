@@ -387,6 +387,8 @@ class ChecksumHelper:
             self.log_path = os.path.abspath(log_path)
         else:
             self.log_path = None
+        self.skipped_unchanged_files: int = 0
+        self.total_files_processed: int = 0
 
         # susbtrings that cant be in filename of hash file
         if hash_filename_filter is None:
@@ -421,6 +423,7 @@ class ChecksumHelper:
         self.all_hash_files = [ChecksumHelperData(
             self, hfile_path) for hfile_path in hash_files]
         self.discovered_hash_files = True
+        logger.info("Done discovering hash files")
 
     def most_current_from_file(self, filename: str) -> None:
         self.hash_file_most_current = ChecksumHelperData(self, filename)
@@ -453,6 +456,7 @@ class ChecksumHelper:
                 f"{self.root_dir_name}_most_current_"
                 f"{time.strftime('%Y-%m-%d')}.cshd")
 
+        logger.info("Start building most_current")
         most_current = ChecksumHelperData(self, filename)
         # update dict with dicts from hash files -> sorted
         # dicts with biggest mtime last(newest) -> most current
@@ -477,7 +481,9 @@ class ChecksumHelper:
                 )
             # NOTE: free memory in case the file was very large
             cshd.clear()
+            logger.info("Finished processing hash file %s", cshd.get_path())
 
+        logger.info("Done building most current")
         self.hash_file_most_current = most_current
 
     def filtered_walk(self, start_path: str, root_only: bool = False,
@@ -608,12 +614,13 @@ class ChecksumHelper:
                 file_list=file_list):
             # status report every N seconds
             if time.time() - last_report >= 30:
-                logger.info("STATUS: Checking file \"%s\"", file_path)
+                logger.info("STATUS: Checking file \"%s\" Skipped %d/%d", file_path, self.skipped_unchanged_files, self.total_files_processed)
                 last_report = time.time()
 
             include, hashed_file = self._build_verfiy_hash(file_path, algo_name,
                                                            collect_fstat=collect_fstat, skip_unchanged=skip_unchanged,
                                                            single_hash=single_hash)
+            self.total_files_processed += 1
             if include:
                 incremental.set_entry(file_path, cast(HashedFile, hashed_file))
                 if incremental_writes:
@@ -671,6 +678,7 @@ class ChecksumHelper:
             if skip_unchanged and comp_mtime == 0:
                 include = self.options['include_unchanged_files_incremental']
                 skip = True
+                self.skipped_unchanged_files += 1
                 logger.infovv(  # type: ignore
                     "Skipping generation of a hash for file '%s' since the mtime matches!",
                     file_path)
