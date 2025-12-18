@@ -252,7 +252,7 @@ def test_verify_all(caplog):
          f'sub3{os.sep}sub2{os.sep}new_cshd2.txt: SHA512 OK'),
     ])
 
-    assert caplog.record_tuples[16:18] == [
+    assert caplog.record_tuples[23:25] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
@@ -272,7 +272,7 @@ def test_verify_all(caplog):
         ('checksum_helper.checksum_helper', logging.INFO, f'new 4.txt: SHA512 OK'),
         ('checksum_helper.checksum_helper', logging.WARNING, f'new 8.txt: MISSING'),
     ])
-    assert caplog.record_tuples[4:6] == [
+    assert caplog.record_tuples[9:11] == [
         ('checksum_helper.checksum_helper', logging.INFO,
          f'{root_dir}{os.sep}sub2_most_current_{time.strftime("%Y-%m-%d")}.sha512: All files matching their hashes!'),
         ('checksum_helper.checksum_helper', logging.WARNING,
@@ -324,7 +324,7 @@ def test_verify_all(caplog):
         ('checksum_helper.checksum_helper', logging.INFO,
          f'sub3{os.sep}sub2{os.sep}new_cshd2.txt: SHA512 OK'),
     ])
-    assert caplog.record_tuples[21:23] == [
+    assert caplog.record_tuples[31:33] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
@@ -371,7 +371,7 @@ def test_verify_all(caplog):
          f'sub1{os.sep}sub2{os.sep}new 8.txt: MISSING'),
     ])
 
-    assert caplog.record_tuples[16:18] == [
+    assert caplog.record_tuples[23:25] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 2 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
@@ -411,7 +411,7 @@ def test_verify_filter(caplog):
          f'sub1{os.sep}new_cshd_3.txt: SHA512 FAILED -> OUTDATED HASH (file is newer)'),
     ])
 
-    assert caplog.record_tuples[10:12] == [
+    assert caplog.record_tuples[17:19] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.INFO,
@@ -446,7 +446,7 @@ def test_verify_filter(caplog):
          f'sub6{os.sep}file1.txt: MISSING'),
     ])
 
-    assert caplog.record_tuples[7:9] == [
+    assert caplog.record_tuples[17:19] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 1 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
@@ -500,7 +500,7 @@ def test_verify_filter(caplog):
          f'sub3{os.sep}sub2{os.sep}new_cshd2.txt: SHA512 OK'),
     ])
 
-    assert caplog.record_tuples[17:19] == [
+    assert caplog.record_tuples[26:28] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
@@ -538,7 +538,7 @@ def test_verify_filter(caplog):
          f'sub1{os.sep}sub2{os.sep}new 8.txt: MISSING'),
     ])
 
-    assert caplog.record_tuples[10:12] == [
+    assert caplog.record_tuples[19:21] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 1 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
