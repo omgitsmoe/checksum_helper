@@ -288,7 +288,8 @@ def setup_gen_missing(setup_tmpdir_param):
     ]
 
     for fn, contents in filename_contents:
-        with open(fn, "w", encoding="utf-8") as f:
+         # NOTE: choose a specific file ending, so the hashes match across systems
+        with open(fn, "w", encoding="utf-8", newline='\r\n') as f:
             f.write(contents)
 
     yield tmpdir, filename_contents
