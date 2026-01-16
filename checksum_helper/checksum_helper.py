@@ -676,10 +676,9 @@ class ChecksumHelper:
                               1 if cast(float, mtime) > cast(float, old.mtime) else -1)
 
             # we already compared the mtime so now we can update the mtime on old
-            # NOTE: not used! we just use mtime below, otherwise mtime would
-            #       not be updated
-            # TODO remove?
-            if not old_has_mtime and mtime is not None:
+            if self.options['incremental_collect_fstat'] and mtime is not None:
+                # always update mtime even if we had one, since it might've
+                # changed
                 old.mtime = mtime
 
             skip = False
@@ -713,7 +712,11 @@ class ChecksumHelper:
                         include = True
                     # otherwise only if the option is set
                     else:
-                        include = self.options["include_unchanged_files_incremental"]
+                        # NOTE: changing mtime counts as "change" in the context
+                        #       of `include_unchanged_files_incremental`
+                        mtime_changed = bool(comp_mtime)
+                        include = mtime_changed or self.options[
+                                    "include_unchanged_files_incremental"]
                     new = old
                 else:
                     if comp_mtime == 0:

@@ -5,6 +5,8 @@ import logging
 import time
 import binascii
 import copy
+import pathlib
+
 
 from typing import cast
 
@@ -204,6 +206,146 @@ def test_do_incremental_cshd(options, verified_cshd_name, setup_tmpdir_param):
 
     generated_cshd_name = f"tt_{time.strftime('%Y-%m-%d')}.cshd"
     generated_cshd_contents = read_file(os.path.join(root_dir, generated_cshd_name))
+
+    compare_lines_sorted(verified_cshd_contents, generated_cshd_contents)
+
+
+def setup_test_tree(
+    tmp_path: pathlib.Path,
+) -> tuple[pathlib.Path, dict[pathlib.Path, float]]:
+    """
+    Create a directory tree with subfolders, files, and a placeholder .cshd file.
+    Set known mtimes for some files.
+    Returns root_dir and a dict of known mtimes.
+    """
+    root_dir = tmp_path / "tt"
+    root_dir.mkdir()
+
+    # --- Subfolders ---
+    sub1 = root_dir / "sub1"
+    sub1.mkdir()
+    sub2 = sub1 / "sub2"
+    sub2.mkdir()
+
+    # --- Files ---
+    file1 = root_dir / "file1.txt"
+    file1.write_text("original file1 content")
+
+    file2 = sub1 / "file2.txt"
+    file2.write_text("original file2 content")
+
+    file3 = sub2 / "file3.txt"
+    file3.write_text("original file3 content")
+
+    # --- Placeholder .cshd file ---
+    cshd_file = root_dir / "existing.cshd"
+    cshd_file.write_text(
+"""\
+1681409541.161,md5,33991b9b34128672a5a70efb7159df61 file1.txt
+1681410901.865,md5,970e09dbe7b759da430145b8b066315f sub1/file2.txt
+1681408067.859,md5,f47b3ea71f9d12e050422ea3c1e9ff7d sub1/sub2/file3.txt
+""")
+
+    known_times = {
+        file1: 1681409541.161,
+        file2: 1681410901.865,
+        file3: 1681408067.859,
+        cshd_file: 1681408077.374,
+    }
+
+    for fpath, mtime in known_times.items():
+        os.utime(fpath, times=(mtime, mtime))
+
+    return root_dir, known_times
+
+
+@pytest.mark.parametrize(
+    "options, verified_cshd_contents",
+    [
+        (
+            {
+                "include_unchanged_files_incremental": False,
+                "incremental_skip_unchanged": False,
+                "incremental_collect_fstat": True,
+            },
+            # NOTE: changing mtime counts as "change" in the context
+            #       of `include_unchanged_files_incremental`
+"""\
+1681408077.374,md5,c64ab7b734f412ec63218341ee8667a1 existing.cshd
+1681411001.865,md5,970e09dbe7b759da430145b8b066315f sub1/file2.txt
+1681407967.859,md5,f47b3ea71f9d12e050422ea3c1e9ff7d sub1/sub2/file3.txt
+"""
+        ),
+        (
+            {
+                "include_unchanged_files_incremental": True,
+                "incremental_skip_unchanged": False,
+                "incremental_collect_fstat": True,
+            },
+"""\
+1681408077.374,md5,c64ab7b734f412ec63218341ee8667a1 existing.cshd
+1681409541.161,md5,33991b9b34128672a5a70efb7159df61 file1.txt
+1681411001.865,md5,970e09dbe7b759da430145b8b066315f sub1/file2.txt
+1681407967.859,md5,f47b3ea71f9d12e050422ea3c1e9ff7d sub1/sub2/file3.txt
+"""
+        ),
+        (
+            {
+                "include_unchanged_files_incremental": True,
+                "incremental_skip_unchanged": True,
+                "incremental_collect_fstat": True,
+            },
+"""\
+1681408077.374,md5,c64ab7b734f412ec63218341ee8667a1 existing.cshd
+1681409541.161,md5,33991b9b34128672a5a70efb7159df61 file1.txt
+1681411001.865,md5,970e09dbe7b759da430145b8b066315f sub1/file2.txt
+1681407967.859,md5,f47b3ea71f9d12e050422ea3c1e9ff7d sub1/sub2/file3.txt
+"""
+        ),
+        (
+            {
+                "include_unchanged_files_incremental": True,
+                "incremental_skip_unchanged": True,
+                "incremental_collect_fstat": False,
+            },
+"""\
+,md5,c64ab7b734f412ec63218341ee8667a1 existing.cshd
+1681409541.161,md5,33991b9b34128672a5a70efb7159df61 file1.txt
+1681410901.865,md5,970e09dbe7b759da430145b8b066315f sub1/file2.txt
+1681408067.859,md5,f47b3ea71f9d12e050422ea3c1e9ff7d sub1/sub2/file3.txt
+"""
+        ),
+    ],
+)
+def test_do_incremental_cshd_mtime_update(options, verified_cshd_contents, setup_tmpdir_param):
+    """
+    Test incremental checksum helper with pre-set mtimes.
+    """
+    tmp_path = pathlib.Path(setup_tmpdir_param)
+    root_dir, known_times = setup_test_tree(tmp_path)
+
+    newer_file = root_dir / "sub1" / "file2.txt"
+    older_file = root_dir / "sub1" / "sub2" / "file3.txt"
+    # only the mtime changes on two selected files TODO
+    # Modify mtimes relative to original known times
+    os.utime(
+        newer_file, times=(known_times[newer_file] + 100, known_times[newer_file] + 100)
+    )
+    os.utime(
+        older_file, times=(known_times[older_file] - 100, known_times[older_file] - 100)
+    )
+
+    checksum_hlpr = ChecksumHelper(str(root_dir), hash_filename_filter=None)
+    checksum_hlpr.options.update(options)
+
+    incremental = checksum_hlpr.do_incremental_checksums("md5")
+    assert incremental is not None
+    incremental.write()
+
+    generated_cshd_name = f"tt_{time.strftime('%Y-%m-%d')}.cshd"
+    generated_cshd_contents = (root_dir / generated_cshd_name).read_text()
+    print('vf', verified_cshd_contents)
+    print('gen', generated_cshd_contents)
 
     compare_lines_sorted(verified_cshd_contents, generated_cshd_contents)
 
