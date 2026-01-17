@@ -10,6 +10,7 @@ import binascii
 import datetime
 import enum
 import copy
+import platform
 
 from dataclasses import dataclass, fields
 from logging.handlers import RotatingFileHandler
@@ -1130,6 +1131,31 @@ class ChecksumHelperData:
                          self.get_path())
             return None
 
+    def _fix_backslash_file_paths(self, content: str) -> str:
+        has_backslashes = "\\" in content
+        if not has_backslashes:
+            return content
+
+        if platform.system() == 'Windows':
+            # NOTE: On Windows both separators are accepted so we can always normalize.
+            return content.replace("\\", "/")
+
+        # However, on Unix '\' is a valid filename character,
+        # so we can't just blindly replace it.
+        # We do a safer version of it by checking if contain any '/'.
+        # If we don't, we assume the file was generated using Windows paths.
+        # However, if the file only contains root paths, then this heuristic
+        # also stops working. We assume using '\\' as path separator is
+        # more likely than using it as a filename character though.
+        if "/" not in content:
+            # only warning on unix, since it's not a problem on windows
+            logger.warning(
+                "Possible checksum file with '\\' as path separators detected. "
+                "Normalizing to using '/' as path separator: %s", self.get_path())
+            return content.replace("\\", "/")
+
+        return content
+
     def _read(self) -> None:
         self.mtime = self.read_mtime()
         if self.mtime is None:
@@ -1217,6 +1243,7 @@ class ChecksumHelperData:
                 # context manager doesnt work now so close file manually
                 af.close()
 
+        text = self._fix_backslash_file_paths(text)
         warned_pardir_ref = False
         for i, ln in enumerate(text.splitlines()):
             # from GNU *sum utils:

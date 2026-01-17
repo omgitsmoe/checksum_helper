@@ -350,6 +350,75 @@ def test_do_incremental_cshd_mtime_update(options, verified_cshd_contents, setup
     compare_lines_sorted(verified_cshd_contents, generated_cshd_contents)
 
 
+def test_single_hash_with_backslash_paths_supported(setup_tmpdir_param):
+    """
+    Ensure that existing checksum files using backslashes as path separators
+    are correctly handled.
+    """
+    tmp_path = pathlib.Path(setup_tmpdir_param)
+    root_dir, known_times = setup_test_tree(tmp_path)
+
+    # Overwrite existing.cshd with backslash-separated paths
+    cshd_file = root_dir / "existing.cshd"
+    cshd_file.unlink()
+    checksum_file = root_dir / "existing.md5"
+    checksum_file.write_text(
+"""\
+33991b9b34128672a5a70efb7159df61  file1.txt
+970e09dbe7b759da430145b8b066315f  sub1\\file2.txt
+f47b3ea71f9d12e050422ea3c1e9ff7d  sub1\\sub2\\file3.txt
+"""
+    )
+
+    # Ensure the cshd mtime is known and stable
+    os.utime(
+        checksum_file,
+        times=(known_times[cshd_file], known_times[cshd_file]),
+    )
+
+    changed_corrupted_file = root_dir / "sub1" / "file2.txt"
+    changed_corrupted_file.write_text("foobar")
+    os.utime(
+        changed_corrupted_file,
+        times=(known_times[changed_corrupted_file], known_times[changed_corrupted_file]),
+    )
+
+    checksum_hlpr = ChecksumHelper(str(root_dir), hash_filename_filter=None)
+    checksum_hlpr.options.update(
+        {
+            "include_unchanged_files_incremental": False,
+            "incremental_skip_unchanged": False,
+            "incremental_collect_fstat": False,
+        }
+    )
+
+    incremental = checksum_hlpr.do_incremental_checksums("md5")
+    assert incremental is not None
+    incremental.write()
+
+    generated_cshd_name = f"tt_{time.strftime('%Y-%m-%d')}.cshd"
+    generated_cshd_path = root_dir / generated_cshd_name
+    assert generated_cshd_path.exists()
+
+    generated_cshd_contents = generated_cshd_path.read_text()
+    print(generated_cshd_contents)
+
+    # Expected output:
+    # Paths may be normalized to forward slashes internally,
+    # but the important thing is that backslash paths were accepted
+    # and resolved correctly.
+    # stayed same:
+    # - 33991b9b34128672a5a70efb7159df61 file1.txt
+    # - f47b3ea71f9d12e050422ea3c1e9ff7d  sub1\\sub2\\file3.txt
+    # -> not included
+    verified_cshd_contents = """\
+,md5,b62acf7e017081fbfd4cde5aaeac9eb3 existing.md5
+,md5,3858f62230ac3c915f300c664312c63f sub1/file2.txt
+"""
+
+    compare_lines_sorted(verified_cshd_contents, generated_cshd_contents)
+
+
 @pytest.mark.parametrize(
         "depth, hash_fn_filter, include_unchanged, whitelist, blacklist, verified_sha_name",
         [

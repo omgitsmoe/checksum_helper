@@ -117,10 +117,18 @@ def sort_hf_contents(cont):
 
 def compare_lines_sorted(a: str, b: str) -> None:
     # strip BOM \ufeff
-    
-    
-    for (line_a, line_b) in zip(sorted(ln for ln in a.strip('\ufeff').splitlines()),
-                 sorted(ln for ln in b.strip('\ufeff').splitlines())):
+    lines_a = list(sorted(a.strip('\ufeff').splitlines()))
+    lines_b = list(sorted(b.strip('\ufeff').splitlines()))
+
+    def line_or_none(ls, i):
+        try:
+            return ls[i]
+        except IndexError:
+            return None
+
+    for i in range(max(len(lines_a), len(lines_b))):
+        line_a = line_or_none(lines_a, i)
+        line_b = line_or_none(lines_b, i)
         if line_a != line_b:
             print("A:", line_a)
             print("B:", line_b)

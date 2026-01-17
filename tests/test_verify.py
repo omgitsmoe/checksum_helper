@@ -2,15 +2,20 @@ import os
 import logging
 import time
 import pytest
+import pathlib
 
-from utils import TESTS_DIR, Args, hash_contents
+from utils import TESTS_DIR, Args, setup_tmpdir_param
 
 from checksum_helper.checksum_helper import ChecksumHelper, _cl_verify_hfile, _cl_verify_all, _cl_verify_filter
 
 
 def x_contains_all_y(x, y) -> None:
     for yy in y:
-        assert yy in x
+        try:
+            assert yy in x
+        except AssertionError:
+            print(yy)
+            raise
 
 
 @pytest.fixture
@@ -568,3 +573,59 @@ def test_verify_filter(caplog):
         ('checksum_helper.checksum_helper', logging.WARNING,
          f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 1 missing files!"),
     ]
+
+
+def test_verify_single_hash_with_backslash_paths(setup_tmpdir_param, caplog):
+    """
+    Verify that .md5 files using Windows-style backslashes in paths
+    are correctly normalized and verified on POSIX systems.
+    """
+    # --- Setup tree ---
+    tmp_path = pathlib.Path(setup_tmpdir_param)
+    root = tmp_path / "tt"
+    sub1 = root / "sub1"
+    sub2 = sub1 / "sub2"
+
+    sub2.mkdir(parents=True)
+
+    file_ok = sub2 / "ok.txt"
+    file_bad = sub2 / "bad.txt"
+
+    file_ok.write_text("ORIGINAL_OK")
+    file_bad.write_text("ORIGINAL_BAD")
+
+    # --- Create .md5 file with BACKSLASH paths ---
+    md5_file = root / "test.md5"
+    md5_file.write_text(
+        """\
+3afcb97f5c1d20649b6acb127db1ebeb  sub1\\sub2\\ok.txt
+65ee35c3fe162c8ae5734ff3cd9d38e8  sub1\\sub2\\bad.txt
+cccccccccccccccccccccccccccccccc  sub1\\sub2\\missing.txt
+"""
+    )
+
+    # --- Modify one file to trigger CRC failure ---
+    file_bad.write_text("MODIFIED_BAD")
+
+    # --- Run verify ---
+    caplog.set_level(logging.INFO, logger="checksum_helper.checksum_helper")
+    caplog.clear()
+
+    args = Args(hash_file_name=[str(md5_file)])
+    result = _cl_verify_hfile(args)
+
+    # --- Assertions: (total, ok, missing, failed) ---
+    assert result == (3, 1, 1, 1)
+
+    # --- Log assertions ---
+    records = caplog.record_tuples
+
+    x_contains_all_y(
+        records,
+        [
+            ("checksum_helper.checksum_helper", logging.WARNING, f"Possible checksum file with '\\' as path separators detected. Normalizing to using '/' as path separator: {md5_file}"),
+            ("checksum_helper.checksum_helper", logging.INFO, "sub1/sub2/ok.txt: MD5 OK"),
+            ("checksum_helper.checksum_helper", logging.WARNING, "sub1/sub2/bad.txt: MD5 FAILED"),
+            ("checksum_helper.checksum_helper", logging.WARNING, "sub1/sub2/missing.txt: MISSING"),
+        ],
+    )
