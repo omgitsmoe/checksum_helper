@@ -52,14 +52,15 @@ def test_build_most_current_single(hash_fn_filter, search_depth, dont_filter_del
                             setup_dir_to_checksum, monkeypatch):
     root_dir = setup_dir_to_checksum
 
+    out_filename = os.path.join(root_dir, "most_current.sha512")
     a = Args(path=root_dir, hash_filename_filter=hash_fn_filter,
              discover_hash_files_depth=search_depth, dont_filter_deleted=dont_filter_deleted,
-             hash_algorithm="sha512", out_filename="most_current.sha512")
+             hash_algorithm="sha512", out_filename=out_filename)
     _cl_build_most_current(a)
 
     verified_sha_contents = read_file(os.path.join(TESTS_DIR, "test_build_most_current_files",
                                                    verified_sha_name))
-    generated_sha_name = f"{root_dir}{os.sep}most_current.sha512"
+    generated_sha_name = out_filename
     generated_sha_contents = read_file(generated_sha_name)
 
     assert(verified_sha_contents == generated_sha_contents)
@@ -78,14 +79,15 @@ def test_build_most_current_cshd(hash_fn_filter, search_depth, dont_filter_delet
     shutil.copy2(os.path.join(TESTS_DIR, "test_build_most_current_files", "pre-existing.cshd"),
                  root_dir)
 
+    out_filename = os.path.join(root_dir, "most_current.cshd")
     a = Args(path=root_dir, hash_filename_filter=hash_fn_filter,
              discover_hash_files_depth=search_depth, dont_filter_deleted=dont_filter_deleted,
-             hash_algorithm="sha512", out_filename="most_current.cshd")
+             hash_algorithm="sha512", out_filename=out_filename)
     _cl_build_most_current(a)
 
     verified_cshd_contents = read_file(os.path.join(TESTS_DIR, "test_build_most_current_files",
                                                    verified_cshd_name))
-    generated_cshd_name = f"{root_dir}{os.sep}most_current.cshd"
+    generated_cshd_name = out_filename
     generated_cshd_contents = read_file(generated_cshd_name)
 
     print("VERIFIED:", verified_cshd_contents.strip())

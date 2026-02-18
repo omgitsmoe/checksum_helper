@@ -340,6 +340,10 @@ def move_info(source_path: str, mv_path: str,
     root_dir parameter is used (like cwd in abspath) to make a relative path absolute
     (but with the option to specify a custom dir that differs from the cwd);
     default for root_dir is the cwd
+
+    :parameter mv_path: Destination path for `source_path`. Can be absolute,
+                        if it's relative, it's assumed to be relative to
+                        `root_dir`
     """
     if root_dir is None:
         root_dir = os.getcwd()
@@ -1444,10 +1448,16 @@ class ChecksumHelperData:
         self.hash_type = hash_type
 
     def relocate(self, mv_path: str) -> Tuple[Optional[str], Optional[str]]:
-        """Converts mv_path into an absolut path and performing some additional checks
+        """Converts mv_path into an absolute path and performs some additional checks
         whether the relocation is valid; Doesnt modfiy anthing in self.entires etc. unless
         the file was renamed to single hash file (e.g. '.sha512') then the hashed files
-        in other hash types will be re-hashed"""
+        in other hash types will be re-hashed
+
+        :param mv_path: Path where the ChecksumHelperData file should be
+                        relocated to.
+                        Either an absolute path or a path that is
+                        relative to the root directory (self.root_dir).
+        """
         # error when trying to move to diff drive
         if os.path.isabs(mv_path) and (
                 os.path.splitdrive(self.root_dir)[0].lower() !=
@@ -1779,7 +1789,10 @@ def _cl_incremental(args: argparse.Namespace):
                                                  incremental_writes=args.incremental_writes)
         if incremental is not None:
             if args.out_filename:
-                incremental.relocate(args.out_filename)
+                # NOTE: must be absolute, otherwise would be treated
+                #       as relative to the root_dir
+                absolute_filename = os.path.abspath(args.out_filename)
+                incremental.relocate(absolute_filename)
             incremental.write()
 
 
@@ -1797,7 +1810,10 @@ def _cl_gen_missing(args: argparse.Namespace):
                                           whitelist=args.whitelist, blacklist=args.blacklist)
     if gen_missing is not None:
         if args.out_filename:
-            gen_missing.relocate(args.out_filename)
+            # NOTE: must be absolute, otherwise would be treated
+            #       as relative to the root_dir
+            absolute_filename = os.path.abspath(args.out_filename)
+            gen_missing.relocate(absolute_filename)
         gen_missing.write()
 
 
@@ -1810,7 +1826,10 @@ def _cl_build_most_current(args: argparse.Namespace) -> None:
         if not args.dont_filter_deleted:
             c.hash_file_most_current.filter_deleted_files()
         if args.out_filename:
-            c.hash_file_most_current.relocate(args.out_filename)
+            # NOTE: must be absolute, otherwise would be treated
+            #       as relative to the root_dir
+            absolute_filename = os.path.abspath(args.out_filename)
+            c.hash_file_most_current.relocate(absolute_filename)
         c.hash_file_most_current.write()
     else:
         logger.error(
