@@ -951,3 +951,133 @@ def test_filtered_walk(wl, bl, expected, setup_dir_to_checksum):
     abs_expected = [os.path.join(root_dir, p) for p in sorted(expected)]
     assert abs_expected == sorted(list(ch.filtered_walk(
         ch.root_dir, False, whitelist=wl, blacklist=bl)))
+
+
+@pytest.fixture()
+def setup_dir_to_checksum_source(setup_tmpdir_param):
+    """
+    Create a test directory tree for checksum tests with deterministic mtimes.
+    """
+    root_dir = pathlib.Path(setup_tmpdir_param) / "tt"
+
+    # create nested dirs
+    (root_dir / "subdir1" / "nested").mkdir(parents=True, exist_ok=True)
+    (root_dir / "subdir2").mkdir(parents=True, exist_ok=True)
+    (root_dir / "empty_dir").mkdir(parents=True, exist_ok=True)
+
+    # define files with (content, fixed_mtime)
+    files_content = {
+        root_dir / "file1.txt": ("Hello, world!\nThis is a test file.\n", 1_700_000_001),
+        root_dir / "subdir1" / "file2.bin": (b"\x00\x01\x02\x03\x04", 1_700_000_002),
+        root_dir / "subdir1" / "nested" / "file3.log": ("log line 1\nlog line 2\n", 1_700_000_003),
+        root_dir / "subdir2" / "file4.md": ("# Test Markdown\n\nSome content.\n", 1_700_000_004),
+        root_dir / "subdir2" / "file5.txt": ("Another text file.\n", 1_700_000_005),
+    }
+
+    # write files + set deterministic mtime
+    for p, (content, mtime) in files_content.items():
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        if isinstance(content, bytes):
+            p.write_bytes(content)
+            raw = content
+        else:
+            p.write_text(content, encoding="utf-8")
+
+        # set deterministic mtime (atime = mtime)
+        os.utime(p, (mtime, mtime))
+
+    # create checksum files
+    checksum_path_single = root_dir / "existing_checksums.md5"
+    # 335ed92ec03dc2e9e03d3abd3d62baeb  file1.txt
+    # defa92a15d33dc4e06a06a9fbdffa752  subdir1/nested/file3.log
+    # b7a1b844e1d995b8578820a0f05933e0  subdir2/file4.md
+    checksum_path_single.write_text(
+        """\
+d05374dc381d9b52806446a71c8e79b1  subdir1/file2.bin
+360c811c4c0a125786e5211750dd2595  subdir2/file5.txt""",
+        encoding="utf-8")
+    checksum_path_single_mtime = 1_700_000_006
+    os.utime(checksum_path_single, (checksum_path_single_mtime, checksum_path_single_mtime))
+
+    checksum_path_cshd = root_dir / "existing_checksums.cshd"
+    # 08bb5e5d6eaac1049ede0893d30ed022b1a4d9b5b48db414871f51c9cb35283d  subdir1/file2.bin
+    # 28f473935160c546ee5bc4b1ae990bf8dc874747d18089fbc90ed74723729208  file1.txt
+    # cd5fbe916a16fe4b345b7529a2fd8fdcfdee9329f1b400b9ada3af8d0838d412  subdir2/file4.md
+    # ff7dbd22a27c98d206ebd3eb3a4264bbd271618f71256b8224d5ac343c3331a5  subdir2/file5.txt
+
+    checksum_path_cshd.write_text(
+        """\
+1700000005.0,sha256,ff7dbd22a27c98d206ebd3eb3a4264bbd271618f71256b8224d5ac343c3331a5 subdir2/file5.txt
+1700000003.0,md5,defa92a15d33dc4e06a06a9fbdffa752  subdir1/nested/file3.log""",
+        encoding="utf-8"
+    )
+    checksum_path_cshd_mtime = 1_700_000_007
+    os.utime(checksum_path_cshd, (checksum_path_cshd_mtime, checksum_path_cshd_mtime))
+
+    yield root_dir
+
+
+def test_cl_incremental_incremental_writes_out_filename(setup_dir_to_checksum_source, monkeypatch):
+    root_dir = setup_dir_to_checksum_source
+    out_filename = root_dir / "foobar.cshd"
+    monkeypatch.setattr(
+        "checksum_helper.checksum_helper.ChecksumHelperDataIncremental.FLUSH_AFTER_N_ENTRIES",
+        2)
+    args = Args(path=str(root_dir), hash_filename_filter=None, single_hash=False,
+             discover_hash_files_depth=-1, most_current_hash_file=None,
+             hash_algorithm="md5", whitelist=None, blacklist=None,
+             per_directory=False, log=None,
+             dont_include_unchanged=True, skip_unchanged = False,
+             dont_collect_mtime=False, out_filename=out_filename, only_missing=False,
+             incremental_writes=True)
+    _cl_incremental(args)
+
+    generated_sha_contents = read_file(out_filename)
+
+    verified_sha_contents = """\
+1700000007.0,md5,c620bb944b88c456d86ac3925b01f859 existing_checksums.cshd
+1700000006.0,md5,e4ff66b2c335d96e34bb57092d49922f existing_checksums.md5
+1700000001.0,md5,335ed92ec03dc2e9e03d3abd3d62baeb file1.txt
+1700000002.0,md5,d05374dc381d9b52806446a71c8e79b1 subdir1/file2.bin
+1700000003.0,md5,defa92a15d33dc4e06a06a9fbdffa752 subdir1/nested/file3.log
+1700000004.0,md5,b7a1b844e1d995b8578820a0f05933e0 subdir2/file4.md
+1700000005.0,md5,360c811c4c0a125786e5211750dd2595 subdir2/file5.txt
+"""
+    print("very", verified_sha_contents)
+    print("gen", generated_sha_contents)
+
+    compare_lines_sorted(verified_sha_contents, generated_sha_contents)
+
+
+def test_cl_incremental_incremental_writes_out_filename_subdir(setup_dir_to_checksum_source, monkeypatch):
+    root_dir = setup_dir_to_checksum_source
+    (root_dir / "foo").mkdir(parents=True, exist_ok=True)
+    out_filename = root_dir / "foo"/ "foobar.cshd"
+    monkeypatch.setattr(
+        "checksum_helper.checksum_helper.ChecksumHelperDataIncremental.FLUSH_AFTER_N_ENTRIES",
+        2)
+    args = Args(path=str(root_dir), hash_filename_filter=None, single_hash=False,
+             discover_hash_files_depth=-1, most_current_hash_file=None,
+             hash_algorithm="md5", whitelist=None, blacklist=None,
+             per_directory=False, log=None,
+             dont_include_unchanged=True, skip_unchanged = False,
+             dont_collect_mtime=False, out_filename=out_filename, only_missing=False,
+             incremental_writes=True)
+    _cl_incremental(args)
+
+    generated_sha_contents = read_file(out_filename)
+
+    verified_sha_contents = """\
+1700000007.0,md5,c620bb944b88c456d86ac3925b01f859 ../existing_checksums.cshd
+1700000006.0,md5,e4ff66b2c335d96e34bb57092d49922f ../existing_checksums.md5
+1700000001.0,md5,335ed92ec03dc2e9e03d3abd3d62baeb ../file1.txt
+1700000002.0,md5,d05374dc381d9b52806446a71c8e79b1 ../subdir1/file2.bin
+1700000003.0,md5,defa92a15d33dc4e06a06a9fbdffa752 ../subdir1/nested/file3.log
+1700000004.0,md5,b7a1b844e1d995b8578820a0f05933e0 ../subdir2/file4.md
+1700000005.0,md5,360c811c4c0a125786e5211750dd2595 ../subdir2/file5.txt
+"""
+    print("very", verified_sha_contents)
+    print("gen", generated_sha_contents)
+
+    compare_lines_sorted(verified_sha_contents, generated_sha_contents)

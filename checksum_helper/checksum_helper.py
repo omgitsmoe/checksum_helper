@@ -642,7 +642,7 @@ class ChecksumHelper:
         if incremental_writes:
             cast(ChecksumHelperDataIncremental, incremental).write(flush=True)
 
-        return incremental if len(incremental.entries) > 0 else None
+        return incremental if incremental_writes or len(incremental.entries) > 0 else None
 
     def _build_verfiy_hash(
             self, file_path: str, algo_name: str, single_hash: bool = False,
@@ -1640,7 +1640,8 @@ class ChecksumHelperDataIncremental(ChecksumHelperData):
         raise NotImplementedError
 
     def relocate(self, mv_path: str) -> Tuple[Optional[str], Optional[str]]:
-        raise NotImplementedError
+        super().read()
+        return super().relocate(mv_path)
 
     def copy_to(self, mv_path: str) -> None:
         raise NotImplementedError
@@ -1793,7 +1794,10 @@ def _cl_incremental(args: argparse.Namespace):
                 #       as relative to the root_dir
                 absolute_filename = os.path.abspath(args.out_filename)
                 incremental.relocate(absolute_filename)
-            incremental.write()
+            if isinstance(incremental, ChecksumHelperDataIncremental):
+                incremental.write(flush=True)
+            else:
+                incremental.write()
 
 
 def _cl_gen_missing(args: argparse.Namespace):
@@ -1814,7 +1818,10 @@ def _cl_gen_missing(args: argparse.Namespace):
             #       as relative to the root_dir
             absolute_filename = os.path.abspath(args.out_filename)
             gen_missing.relocate(absolute_filename)
-        gen_missing.write()
+        if isinstance(gen_missing, ChecksumHelperDataIncremental):
+            gen_missing.write(flush=True)
+        else:
+            gen_missing.write()
 
 
 def _cl_build_most_current(args: argparse.Namespace) -> None:
@@ -1830,7 +1837,10 @@ def _cl_build_most_current(args: argparse.Namespace) -> None:
             #       as relative to the root_dir
             absolute_filename = os.path.abspath(args.out_filename)
             c.hash_file_most_current.relocate(absolute_filename)
-        c.hash_file_most_current.write()
+        if isinstance(c.hash_file_most_current, ChecksumHelperDataIncremental):
+            c.hash_file_most_current.write(flush=True)
+        else:
+            c.hash_file_most_current.write()
     else:
         logger.error(
             "Could not build most current hash file data for: %s", args.path)
