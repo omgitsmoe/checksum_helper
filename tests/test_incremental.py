@@ -468,7 +468,7 @@ def test_white_black_list(depth, hash_fn_filter, include_unchanged, whitelist, b
              dont_include_unchanged=not include_unchanged, discover_hash_files_depth=depth,
              hash_algorithm="sha512", per_directory=False, whitelist=whitelist, blacklist=blacklist,
              skip_unchanged=False, dont_collect_mtime=False, only_missing=False,
-             incremental_writes=False)
+             incremental_writes=False, out_filename=None)
     _cl_incremental(a)
     if whitelist is not None and blacklist is not None:
         assert caplog.record_tuples == [
@@ -503,7 +503,7 @@ def test_do_incremental_per_dir(whitelist, blacklist, expected_dir, setup_tmpdir
              log=os.path.join(root_dir, "chsmhlpr.log"),
              hash_algorithm="sha512", per_directory=True, whitelist=whitelist, blacklist=blacklist,
              skip_unchanged=False, dont_collect_mtime=False, only_missing=False,
-             incremental_writes=False)
+             incremental_writes=False, out_filename=None)
     _cl_incremental(a)
 
     expected_res = [
@@ -1020,7 +1020,8 @@ d05374dc381d9b52806446a71c8e79b1  subdir1/file2.bin
 
 def test_cl_incremental_incremental_writes_out_filename(setup_dir_to_checksum_source, monkeypatch):
     root_dir = setup_dir_to_checksum_source
-    out_filename = root_dir / "foobar.cshd"
+    out_filename = "foobar.cshd"
+    out_filename_full = root_dir / out_filename
     monkeypatch.setattr(
         "checksum_helper.checksum_helper.ChecksumHelperDataIncremental.FLUSH_AFTER_N_ENTRIES",
         2)
@@ -1033,7 +1034,7 @@ def test_cl_incremental_incremental_writes_out_filename(setup_dir_to_checksum_so
              incremental_writes=True)
     _cl_incremental(args)
 
-    generated_sha_contents = read_file(out_filename)
+    generated_sha_contents = read_file(out_filename_full)
 
     verified_sha_contents = """\
 1700000007.0,md5,c620bb944b88c456d86ac3925b01f859 existing_checksums.cshd
@@ -1050,32 +1051,63 @@ def test_cl_incremental_incremental_writes_out_filename(setup_dir_to_checksum_so
     compare_lines_sorted(verified_sha_contents, generated_sha_contents)
 
 
-def test_cl_incremental_incremental_writes_out_filename_subdir(setup_dir_to_checksum_source, monkeypatch):
+def test_cl_incremental_out_filename_exists_errors(setup_dir_to_checksum_source, monkeypatch):
     root_dir = setup_dir_to_checksum_source
-    (root_dir / "foo").mkdir(parents=True, exist_ok=True)
-    out_filename = root_dir / "foo"/ "foobar.cshd"
-    monkeypatch.setattr(
-        "checksum_helper.checksum_helper.ChecksumHelperDataIncremental.FLUSH_AFTER_N_ENTRIES",
-        2)
+    out_filename = "foobar.cshd"
+    out_filename_full = root_dir / out_filename
+
+    out_filename_full.write_text("foo")
+
     args = Args(path=str(root_dir), hash_filename_filter=None, single_hash=False,
              discover_hash_files_depth=-1, most_current_hash_file=None,
              hash_algorithm="md5", whitelist=None, blacklist=None,
              per_directory=False, log=None,
              dont_include_unchanged=True, skip_unchanged = False,
              dont_collect_mtime=False, out_filename=out_filename, only_missing=False,
-             incremental_writes=True)
+             incremental_writes=False)
+    with pytest.raises(RuntimeError):
+        _cl_incremental(args)
+
+
+def test_cl_incremental_out_filename_with_path_sep_errors(setup_dir_to_checksum_source, monkeypatch):
+    root_dir = setup_dir_to_checksum_source
+    out_filename = "foobar.cshd"
+    out_filename_full = root_dir / out_filename
+
+    args = Args(path=str(root_dir), hash_filename_filter=None, single_hash=False,
+             discover_hash_files_depth=-1, most_current_hash_file=None,
+             hash_algorithm="md5", whitelist=None, blacklist=None,
+             per_directory=False, log=None,
+             dont_include_unchanged=True, skip_unchanged = False,
+             dont_collect_mtime=False, out_filename=str(out_filename_full), only_missing=False,
+             incremental_writes=False)
+    with pytest.raises(ValueError):
+        _cl_incremental(args)
+
+
+def test_cl_incremental_writes_out_filename(setup_dir_to_checksum_source, monkeypatch):
+    root_dir = setup_dir_to_checksum_source
+    out_filename = "foobar.cshd"
+    out_filename_full = root_dir / out_filename
+    args = Args(path=str(root_dir), hash_filename_filter=None, single_hash=False,
+             discover_hash_files_depth=-1, most_current_hash_file=None,
+             hash_algorithm="md5", whitelist=None, blacklist=None,
+             per_directory=False, log=None,
+             dont_include_unchanged=True, skip_unchanged = False,
+             dont_collect_mtime=False, out_filename=out_filename, only_missing=False,
+             incremental_writes=False)
     _cl_incremental(args)
 
-    generated_sha_contents = read_file(out_filename)
+    generated_sha_contents = read_file(out_filename_full)
 
     verified_sha_contents = """\
-1700000007.0,md5,c620bb944b88c456d86ac3925b01f859 ../existing_checksums.cshd
-1700000006.0,md5,e4ff66b2c335d96e34bb57092d49922f ../existing_checksums.md5
-1700000001.0,md5,335ed92ec03dc2e9e03d3abd3d62baeb ../file1.txt
-1700000002.0,md5,d05374dc381d9b52806446a71c8e79b1 ../subdir1/file2.bin
-1700000003.0,md5,defa92a15d33dc4e06a06a9fbdffa752 ../subdir1/nested/file3.log
-1700000004.0,md5,b7a1b844e1d995b8578820a0f05933e0 ../subdir2/file4.md
-1700000005.0,md5,360c811c4c0a125786e5211750dd2595 ../subdir2/file5.txt
+1700000007.0,md5,c620bb944b88c456d86ac3925b01f859 existing_checksums.cshd
+1700000006.0,md5,e4ff66b2c335d96e34bb57092d49922f existing_checksums.md5
+1700000001.0,md5,335ed92ec03dc2e9e03d3abd3d62baeb file1.txt
+1700000002.0,md5,d05374dc381d9b52806446a71c8e79b1 subdir1/file2.bin
+1700000003.0,md5,defa92a15d33dc4e06a06a9fbdffa752 subdir1/nested/file3.log
+1700000004.0,md5,b7a1b844e1d995b8578820a0f05933e0 subdir2/file4.md
+1700000005.0,md5,360c811c4c0a125786e5211750dd2595 subdir2/file5.txt
 """
     print("very", verified_sha_contents)
     print("gen", generated_sha_contents)

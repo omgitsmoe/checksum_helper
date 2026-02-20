@@ -220,11 +220,14 @@ def test_verify_hfile_warn_missing_and_crc(caplog):
     ]
 
 
-def test_verify_all(caplog):
+def test_verify_all(caplog, monkeypatch):
     test_verify_root = os.path.join(TESTS_DIR, "test_verify_files", "tt")
     # caplog.set_level sets on root logger by default which is somehow not the logger setup by
     # checksum_helper so specify our logger in the kw param
     caplog.set_level(logging.INFO, logger='checksum_helper.checksum_helper')
+
+    monkeypatch.setattr("time.strftime", lambda *args: "<footime>")
+
     # ------------ 2 wrong crc, 2 missing, MixedAlgo ----------
     root_dir = test_verify_root
     a = Args(root_dir=[root_dir],
@@ -263,9 +266,9 @@ def test_verify_all(caplog):
 
     assert caplog.record_tuples[23:25] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 files with wrong CRCs!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 3 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 missing files!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 3 missing files!"),
     ]
 
     # ------------ all matching, 1 missing, most_current single hash file ----------
@@ -283,9 +286,9 @@ def test_verify_all(caplog):
     ])
     assert caplog.record_tuples[9:11] == [
         ('checksum_helper.checksum_helper', logging.INFO,
-         f'{root_dir}{os.sep}sub2_most_current_{time.strftime("%Y-%m-%d")}.sha512: All files matching their hashes!'),
+         f'{root_dir}{os.sep}sub2_most_current_<footime>.sha512: All files matching their hashes!'),
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f'{root_dir}{os.sep}sub2_most_current_{time.strftime("%Y-%m-%d")}.sha512: 1 missing files!'),
+         f'{root_dir}{os.sep}sub2_most_current_<footime>.sha512: 1 missing files!'),
     ]
 
     # ------------ 3 wrong crc, 4 missing ----------
@@ -339,9 +342,9 @@ def test_verify_all(caplog):
     ])
     assert caplog.record_tuples[31:33] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 files with wrong CRCs!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 3 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 4 missing files!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 4 missing files!"),
     ]
 
     # ------------ 2 wrong crc, 3 missing, single hash, md5+cshd filtered  ----------
@@ -390,17 +393,20 @@ def test_verify_all(caplog):
 
     assert caplog.record_tuples[23:25] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 2 files with wrong CRCs!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.sha512: 2 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.sha512: 3 missing files!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.sha512: 3 missing files!"),
     ]
 
 
-def test_verify_filter(caplog):
+def test_verify_filter(caplog, monkeypatch):
     test_verify_root = os.path.join(TESTS_DIR, "test_verify_files", "tt")
     # caplog.set_level sets on root logger by default which is somehow not the logger setup by
     # checksum_helper so specify our logger in the kw param
     caplog.set_level(logging.INFO, logger='checksum_helper.checksum_helper')
+
+    monkeypatch.setattr("time.strftime", lambda *args: "<footime>")
+
     # ------------ 3 wrong crc, no missing, MixedAlgo ----------
     root_dir = test_verify_root
     a = Args(root_dir=root_dir, discover_hash_files_depth=1, hash_filename_filter=(),
@@ -430,9 +436,9 @@ def test_verify_filter(caplog):
 
     assert caplog.record_tuples[17:19] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 3 files with wrong CRCs!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 3 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.INFO,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: No missing files!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: No missing files!"),
     ]
 
     # ------------ 1 crc err, 2 missing, MixedAlgo ----------
@@ -469,9 +475,9 @@ def test_verify_filter(caplog):
 
     assert caplog.record_tuples[17:19] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 1 files with wrong CRCs!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 1 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 missing files!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 2 missing files!"),
     ]
 
     # ------------ 2 wrong crc, 4 missing, HashFile, md5 filtered  ----------
@@ -527,9 +533,9 @@ def test_verify_filter(caplog):
 
     assert caplog.record_tuples[26:28] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 2 files with wrong CRCs!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 2 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 4 missing files!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 4 missing files!"),
     ]
 
     # ------------ 1 wrong crc, 1 missing, HashFile, md5 filtered  ----------
@@ -569,9 +575,9 @@ def test_verify_filter(caplog):
 
     assert caplog.record_tuples[19:21] == [
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 1 files with wrong CRCs!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 1 files with wrong CRCs!"),
         ('checksum_helper.checksum_helper', logging.WARNING,
-         f"{root_dir}{os.sep}tt_most_current_{time.strftime('%Y-%m-%d')}.cshd: 1 missing files!"),
+         f"{root_dir}{os.sep}tt_most_current_<footime>.cshd: 1 missing files!"),
     ]
 
 

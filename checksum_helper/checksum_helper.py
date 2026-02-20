@@ -442,7 +442,7 @@ class ChecksumHelper:
         self.hash_file_most_current = ChecksumHelperData(self, filename)
         self.hash_file_most_current.read()
 
-    def build_most_current(self) -> None:
+    def build_most_current(self, out_filename: Optional[str] = None) -> None:
         if not self.discovered_hash_files:
             self.discover_hash_files()
 
@@ -462,12 +462,12 @@ class ChecksumHelper:
             filename = os.path.join(
                 self.root_dir,
                 f"{self.root_dir_name}_most_current_"
-                f"{time.strftime('%Y-%m-%d')}.{self.all_hash_files[0].hash_type}")
+                f"{time.strftime('%Y-%m-%dT%H-%M-%S')}.{self.all_hash_files[0].hash_type}")
         else:
             filename = os.path.join(
                 self.root_dir,
                 f"{self.root_dir_name}_most_current_"
-                f"{time.strftime('%Y-%m-%d')}.cshd")
+                f"{time.strftime('%Y-%m-%dT%H-%M-%S')}.cshd")
 
         logger.info("Start building most_current")
         most_current = ChecksumHelperData(self, filename)
@@ -575,7 +575,8 @@ class ChecksumHelper:
             root_only: bool = False, whitelist: Optional[List[str]] = None,
             blacklist: Optional[List[str]] = None,
             only_missing: bool = False,
-            incremental_writes: bool = False) -> Optional['ChecksumHelperData']:
+            incremental_writes: bool = False,
+            out_filename: Optional[str] = None) -> Optional['ChecksumHelperData']:
         """
         Creates checksums for all changed files (that dont match checksums in
         hash_file_most_current)
@@ -585,6 +586,15 @@ class ChecksumHelper:
         only_missing: only include hashes for files that don't have one yet
         incremental_writes: flush the state of the incremental hash file to
                             disk periodically
+        out_filename: If None a filename of the sort
+                      `{parent_dirname}.{algo_name}` will be
+                      generated. If the file exists it will prompt
+                      to abort/overwrite/rename.
+                      If out_filename is not None the path will used
+                      for writing the checksum file.
+                      A file existing at that path is then considered an error!
+                      Only the actual filename component may be specified,
+                      not a path containing separators.
         """
         # NOTE: white/blacklist are mutually exclusive which is checked in filtered_walk
         # but we do the duplicate check here as well so we can avoid the cost of
@@ -600,13 +610,26 @@ class ChecksumHelper:
         if start_path is None:
             start_path = self.root_dir
 
-        dir_name = os.path.basename(start_path)
-        if single_hash:
+        if out_filename is not None:
+            if out_filename != os.path.basename(out_filename):
+                raise ValueError(
+                    "Only the filename component is expected as `out_filename`, "
+                    f"got: {out_filename}")
+
             filename = os.path.join(
-                start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.{algo_name}")
+                start_path, out_filename)
+
+            if os.path.isfile(filename):
+                raise RuntimeError(
+                    f"File at '{filename}' already exists!")
         else:
-            filename = os.path.join(
-                start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.cshd")
+            dir_name = os.path.basename(start_path)
+            if single_hash:
+                filename = os.path.join(
+                    start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.{algo_name}")
+            else:
+                filename = os.path.join(
+                    start_path, f"{dir_name}_{time.strftime('%Y-%m-%d')}.cshd")
 
         incremental: ChecksumHelperData
         if incremental_writes:
@@ -756,13 +779,23 @@ class ChecksumHelper:
     def gen_missing_checksums(
             self, algo_name: str, single_hash: bool = False, start_path: Optional[str] = None,
             whitelist: Optional[List[str]] = None,
-            blacklist: Optional[List[str]] = None) -> Optional['ChecksumHelperData']:
+            blacklist: Optional[List[str]] = None,
+            out_filename: Optional[str] = None) -> Optional['ChecksumHelperData']:
         """
         Creates checksums for all changed files (that dont match checksums in
         hash_file_most_current)
 
         start_path: has to be a subpath of self.root_dir
         root_only:  only do incremental checksums for the files of the root/start_path only
+        out_filename: If None a filename of the sort
+                      `{parent_dirname}.{algo_name}` will be
+                      generated. If the file exists it will prompt
+                      to abort/overwrite/rename.
+                      If out_filename is not None the path will used
+                      for writing the checksum file.
+                      A file existing at that path is then considered an error!
+                      Only the actual filename component may be specified,
+                      not a path containing separators.
         """
         # NOTE: white/blacklist are mutually exclusive which is checked in filtered_walk
         # but we do the duplicate check here as well so we can avoid the cost of
@@ -778,13 +811,26 @@ class ChecksumHelper:
         if start_path is None:
             start_path = self.root_dir
 
-        dir_name = os.path.basename(start_path)
-        if single_hash:
+        if out_filename is not None:
+            if out_filename != os.path.basename(out_filename):
+                raise ValueError(
+                    "Only the filename component is expected as `out_filename`, "
+                    f"got: {out_filename}")
+
             filename = os.path.join(
-                start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.{algo_name}")
+                start_path, out_filename)
+
+            if os.path.isfile(filename):
+                raise RuntimeError(
+                    f"File at '{filename}' already exists!")
         else:
-            filename = os.path.join(
-                start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.cshd")
+            dir_name = os.path.basename(start_path)
+            if single_hash:
+                filename = os.path.join(
+                    start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.{algo_name}")
+            else:
+                filename = os.path.join(
+                    start_path, f"{dir_name}_missing_{time.strftime('%Y-%m-%d')}.cshd")
         missing_cshd = ChecksumHelperData(self, filename)
 
         collect_fstat = self.options['incremental_collect_fstat']
@@ -1119,7 +1165,7 @@ class ChecksumHelperData:
                 self._read()
             self._was_read = True
         except InvalidHashLineError as e:
-            logger.warn("File will be skipped: Malformed hash file: %s", str(e))
+            logger.warning("File will be skipped: Malformed hash file: %s", str(e))
         except Exception as e:
             logger.error(
                 "Reading of hash file %s failed due to an unknown error!"
@@ -1761,7 +1807,8 @@ def _cl_incremental(args: argparse.Namespace):
             whitelist=args.whitelist,
             blacklist=args.blacklist,
             only_missing=args.only_missing,
-            incremental_writes=args.incremental_writes)
+            incremental_writes=args.incremental_writes,
+            out_filename=args.out_filename)
         if incremental is not None:
             incremental.write()
 
@@ -1780,24 +1827,22 @@ def _cl_incremental(args: argparse.Namespace):
                 whitelist=args.whitelist,
                 blacklist=args.blacklist,
                 only_missing=args.only_missing,
-                incremental_writes=args.incremental_writes)
+                incremental_writes=args.incremental_writes,
+                out_filename=args.out_filename)
             if incremental is not None:
                 incremental.write()
     else:
-        incremental = c.do_incremental_checksums(args.hash_algorithm, single_hash=args.single_hash,
-                                                 whitelist=args.whitelist, blacklist=args.blacklist,
-                                                 only_missing=args.only_missing,
-                                                 incremental_writes=args.incremental_writes)
+        incremental = c.do_incremental_checksums(
+            args.hash_algorithm,
+            single_hash=args.single_hash,
+            whitelist=args.whitelist,
+            blacklist=args.blacklist,
+            only_missing=args.only_missing,
+            incremental_writes=args.incremental_writes,
+            out_filename=args.out_filename,
+        )
         if incremental is not None:
-            if args.out_filename:
-                # NOTE: must be absolute, otherwise would be treated
-                #       as relative to the root_dir
-                absolute_filename = os.path.abspath(args.out_filename)
-                incremental.relocate(absolute_filename)
-            if isinstance(incremental, ChecksumHelperDataIncremental):
-                incremental.write(flush=True)
-            else:
-                incremental.write()
+            incremental.write()
 
 
 def _cl_gen_missing(args: argparse.Namespace):
@@ -1810,18 +1855,15 @@ def _cl_gen_missing(args: argparse.Namespace):
     if args.most_current_hash_file:
         c.most_current_from_file(args.most_current_hash_file)
 
-    gen_missing = c.gen_missing_checksums(args.hash_algorithm, single_hash=args.single_hash,
-                                          whitelist=args.whitelist, blacklist=args.blacklist)
+    gen_missing = c.gen_missing_checksums(
+        args.hash_algorithm,
+        single_hash=args.single_hash,
+        whitelist=args.whitelist,
+        blacklist=args.blacklist,
+        out_filename=args.out_filename,
+    )
     if gen_missing is not None:
-        if args.out_filename:
-            # NOTE: must be absolute, otherwise would be treated
-            #       as relative to the root_dir
-            absolute_filename = os.path.abspath(args.out_filename)
-            gen_missing.relocate(absolute_filename)
-        if isinstance(gen_missing, ChecksumHelperDataIncremental):
-            gen_missing.write(flush=True)
-        else:
-            gen_missing.write()
+        gen_missing.write()
 
 
 def _cl_build_most_current(args: argparse.Namespace) -> None:
@@ -2099,7 +2141,8 @@ def main():
                                   "the date appended, by default a .cshd file is created. "
                                   "Specify a filename having a hash type "
                                   "(see hashlib.algorithms_available) as extension to have all "
-                                  "other hashes be re-hashed to this one!")
+                                  "other hashes be re-hashed to this one! "
+                                  "Only the filename component is allowed, no path separators!")
     # only either white or blacklist can be used at the same time - not both
     inc_wl_or_bl = incremental.add_mutually_exclusive_group()
     inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
@@ -2123,11 +2166,12 @@ def main():
                                                     "removes hashes of missing files by default!")
     build_most_current.add_argument("path", type=str)
     build_most_current.add_argument("-o", "--out-filename", type=str,
-                                    help="Default filename is the the name of the parent dir with "
+                                    help="Default filename is `{path}/` and the name of the parent dir with "
                                          "_most_current_ and the date appended, if multiple hash "
                                          "types are used a .cshd file is created. Specify a filename "
                                          "having a hash type (see hashlib.algorithms_available) as "
-                                         "extension to have all other hashes be re-hashed to this one!")
+                                         "extension to have all other hashes be re-hashed to this one! "
+                                         "Both relative and absolute paths are supported!")
     # store_true -> default false, when specified true <-> store_false reversed
     build_most_current.add_argument("--dont-filter-deleted", action="store_true",
                                     help="Dont filter out deleted files in most_current hash file")
@@ -2229,7 +2273,8 @@ def main():
                                   "the date appended, by default a .cshd file is created. "
                                   "Specify a filename having a hash type "
                                   "(see hashlib.algorithms_available) as extension to have all "
-                                  "other hashes be re-hashed to this one!")
+                                  "other hashes be re-hashed to this one! "
+                                  "Only the filename component is allowed, no path separators!")
     # only either white or blacklist can be used at the same time - not both
     inc_wl_or_bl = gen_missing.add_mutually_exclusive_group()
     inc_wl_or_bl.add_argument("-wl", "--whitelist", nargs="+", metavar='PATTERN', default=None,
